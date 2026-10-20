@@ -1,0 +1,6 @@
+{
+  "name": "RetroForge",
+  "description": "Multi-system retro emulator for GB, GBA, GBC, NDS, and N64 ROMs with customizable skins, rewinding, fast-forwarding, save states, and cloud synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

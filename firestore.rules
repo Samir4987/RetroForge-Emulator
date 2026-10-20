@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidSaveState(data) {
+      return data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.gameId is string && data.gameId.size() > 0 && data.gameId.size() <= 128 &&
+             data.gameTitle is string && data.gameTitle.size() > 0 && data.gameTitle.size() <= 200 &&
+             data.system in ['GB', 'GBC', 'GBA', 'NDS', 'N64'] &&
+             data.slot is int && data.slot >= 0 && data.slot <= 9 &&
+             (!('label' in data) || (data.label is string && data.label.size() <= 200)) &&
+             data.stateData is string && data.stateData.size() > 0 && data.stateData.size() <= 2000000 &&
+             (!('thumbnailBase64' in data) || (data.thumbnailBase64 is string && data.thumbnailBase64.size() <= 500000)) &&
+             (!('playTimeSeconds' in data) || (data.playTimeSeconds is int && data.playTimeSeconds >= 0)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidUserPreferences(data) {
+      return data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.activeSkin is string && data.activeSkin.size() > 0 && data.activeSkin.size() <= 50 &&
+             data.hapticsEnabled is bool &&
+             data.fastForwardSpeed is int && data.fastForwardSpeed >= 1 && data.fastForwardSpeed <= 16 &&
+             data.rewindCapacityFrames is int && data.rewindCapacityFrames >= 60 && data.rewindCapacityFrames <= 1800 &&
+             data.audioEnabled is bool &&
+             data.audioVolume is int && data.audioVolume >= 0 && data.audioVolume <= 100 &&
+             data.screenScaleMode is string && data.screenScaleMode.size() <= 50 &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /users/{userId} {
+      allow get, list: if isSignedIn() && request.auth.uid == userId;
+
+      match /save_states/{saveStateId} {
+        allow get, list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         incoming().userId == userId &&
+                         isValidId(saveStateId) &&
+                         isValidSaveState(incoming()) &&
+                         incoming().keys().hasAll(['userId', 'gameId', 'gameTitle', 'system', 'slot', 'stateData', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'gameId', 'gameTitle', 'system', 'slot', 'label', 'stateData', 'thumbnailBase64', 'playTimeSeconds', 'createdAt', 'updatedAt']);
+
+        allow update: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidId(saveStateId) &&
+                         isValidSaveState(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['gameTitle', 'slot', 'label', 'stateData', 'thumbnailBase64', 'playTimeSeconds', 'updatedAt']);
+
+        allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(saveStateId);
+      }
+
+      match /preferences/{prefId} {
+        allow get, list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         incoming().userId == userId &&
+                         isValidId(prefId) &&
+                         isValidUserPreferences(incoming()) &&
+                         incoming().keys().hasAll(['userId', 'activeSkin', 'hapticsEnabled', 'fastForwardSpeed', 'rewindCapacityFrames', 'audioEnabled', 'audioVolume', 'screenScaleMode', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'activeSkin', 'hapticsEnabled', 'fastForwardSpeed', 'rewindCapacityFrames', 'audioEnabled', 'audioVolume', 'screenScaleMode', 'updatedAt']);
+
+        allow update: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         incoming().userId == existing().userId &&
+                         isValidId(prefId) &&
+                         isValidUserPreferences(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['activeSkin', 'hapticsEnabled', 'fastForwardSpeed', 'rewindCapacityFrames', 'audioEnabled', 'audioVolume', 'screenScaleMode', 'updatedAt']);
+
+        allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(prefId);
+      }
+    }
+  }
+}

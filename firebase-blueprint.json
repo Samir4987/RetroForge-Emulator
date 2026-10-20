@@ -1,0 +1,137 @@
+{
+  "entities": {
+    "SaveState": {
+      "title": "SaveState",
+      "description": "Represents an emulator snapshot state for a retro game.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The authenticated user ID of the owner."
+        },
+        "gameId": {
+          "type": "string",
+          "description": "Unique identifier of the ROM or game."
+        },
+        "gameTitle": {
+          "type": "string",
+          "description": "Human readable game title."
+        },
+        "system": {
+          "type": "string",
+          "enum": ["GB", "GBC", "GBA", "NDS", "N64"],
+          "description": "Emulated gaming platform system."
+        },
+        "slot": {
+          "type": "integer",
+          "description": "Save slot index from 0 to 9."
+        },
+        "label": {
+          "type": "string",
+          "description": "Optional label or description of the save state."
+        },
+        "stateData": {
+          "type": "string",
+          "description": "Serialized emulator state data payload."
+        },
+        "thumbnailBase64": {
+          "type": "string",
+          "description": "Base64 encoded thumbnail preview of the screen."
+        },
+        "playTimeSeconds": {
+          "type": "integer",
+          "description": "Elapsed play time in seconds."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when this save state was created. Submit FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when this save state was last updated. Submit FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "gameId",
+        "gameTitle",
+        "system",
+        "slot",
+        "stateData",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPreferences": {
+      "title": "UserPreferences",
+      "description": "User emulator settings and controller skin customizations.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner user ID."
+        },
+        "activeSkin": {
+          "type": "string",
+          "description": "Selected controller skin theme name."
+        },
+        "hapticsEnabled": {
+          "type": "boolean",
+          "description": "Whether tactile vibration haptics are enabled."
+        },
+        "fastForwardSpeed": {
+          "type": "integer",
+          "description": "Fast-forward multiplier speed."
+        },
+        "rewindCapacityFrames": {
+          "type": "integer",
+          "description": "Maximum number of history frames retained in the rewind buffer."
+        },
+        "audioEnabled": {
+          "type": "boolean",
+          "description": "Whether chiptune audio output is enabled."
+        },
+        "audioVolume": {
+          "type": "integer",
+          "description": "Audio volume from 0 to 100."
+        },
+        "screenScaleMode": {
+          "type": "string",
+          "description": "Aspect ratio scaling mode."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when preferences were updated. Submit FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "activeSkin",
+        "hapticsEnabled",
+        "fastForwardSpeed",
+        "rewindCapacityFrames",
+        "audioEnabled",
+        "audioVolume",
+        "screenScaleMode",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/save_states/{saveStateId}": {
+      "schema": {
+        "$ref": "#/entities/SaveState"
+      },
+      "description": "Per-user save state snapshots for all supported retro platforms."
+    },
+    "/users/{userId}/preferences/{prefId}": {
+      "schema": {
+        "$ref": "#/entities/UserPreferences"
+      },
+      "description": "Per-user settings and controller skin customizations."
+    }
+  }
+}
