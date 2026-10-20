@@ -5,9 +5,7 @@ Here is a markdown `README.md` template for **RetroForge**.
 ```markdown
 # RetroForge 🕹️
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)
+
 
 **RetroForge** is an open-source, multi-system retro video game console emulator designed for accuracy, low latency, and ease of use. It brings together several iconic Nintendo systems into a single modular architecture.
 
