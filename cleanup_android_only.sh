@@ -1,47 +1,44 @@
-#!/usr/bin/env bash
-set -euo pipefail
+- name: Remove desktop/web leftovers
+  shell: bash
+  run: |
+    set +e
 
-echo "Starting cleanup for Android-only build..."
+    for dir in \
+      desktop \
+      web \
+      desktopApp \
+      webApp \
+      composeApp \
+      shared \
+      ios \
+      iosApp \
+      macos \
+      windows \
+      wasm \
+      .gradle \
+      build \
+      app/build \
+      .idea \
+      .kotlin
+    do
+      if [ -e "$dir" ]; then
+        rm -rf "$dir"
+        echo "Deleted: $dir"
+      fi
+    done
 
-# Remove common unwanted directories
-for dir in \
-  desktop \
-  web \
-  desktopApp \
-  webApp \
-  composeApp \
-  shared \
-  ios \
-  iosApp \
-  macos \
-  windows \
-  wasm \
-  .gradle \
-  build \
-  app/build \
-  .idea \
-  .kotlin
-do
-  if [ -e "$dir" ]; then
-    rm -rf "$dir"
-    echo "Deleted: $dir"
-  fi
-done
+    for file in \
+      local.properties \
+      .DS_Store
+    do
+      if [ -e "$file" ]; then
+        rm -f "$file"
+        echo "Deleted: $file"
+      fi
+    done
 
-# Remove common generated local files
-for file in \
-  local.properties \
-  .DS_Store
-do
-  if [ -e "$file" ]; then
-    rm -f "$file"
-    echo "Deleted: $file"
-  fi
-done
-
-# Clean likely stale KMP project includes from settings.gradle.kts
-if [ -f settings.gradle.kts ]; then
-  python3 - <<'PY'
+    if [ -f settings.gradle.kts ]; then
+      python3 - <<'PY'
 from pathlib import Path
 
 p = Path("settings.gradle.kts")
@@ -74,6 +71,6 @@ if p.exists():
     p.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     print("Cleaned settings.gradle.kts")
 PY
-fi
+    fi
 
-echo "Cleanup complete."
+    exit 0
