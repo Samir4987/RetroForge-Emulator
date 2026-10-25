@@ -21,32 +21,24 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Install Android SDK tools
+      - name: Check gradlew exists
         run: |
-          mkdir -p $HOME/android-sdk
-          cd $HOME/android-sdk
-          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O tools.zip
-          unzip -q tools.zip
-          mkdir -p cmdline-tools
-          mv cmdline-tools cmdline-tools-bak 2>/dev/null || true
-          if [ -d tools/bin ]; then mv tools cmdline-tools; fi
-          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/cmdline-tools/bin" >> $GITHUB_PATH
-          echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
+          ls -l
+          ls -l ./gradlew
+          file ./gradlew
 
-      - name: Accept Android SDK licenses
-        run: |
-          yes | $HOME/android-sdk/cmdline-tools/bin/sdkmanager --licenses
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Install Android SDK packages
         run: |
-          $HOME/android-sdk/cmdline-tools/bin/sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
-
-      - name: Grant execution permission for Gradle
-        run: chmod +x ./gradlew
+          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug
+        run: bash ./gradlew assembleDebug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
