@@ -1,19 +1,50 @@
-*.iml
-.kotlin
-.gradle
-**/build/
-xcuserdata
-!src/**/build/
-local.properties
-.idea
+# OS files
 .DS_Store
-captures
-.externalNativeBuild
-.cxx
-*.xcodeproj/*
-!*.xcodeproj/project.pbxproj
-!*.xcodeproj/xcshareddata/
-!*.xcodeproj/project.xcworkspace/
-!*.xcworkspace/contents.xcworkspacedata
-**/xcshareddata/WorkspaceSettings.xcsettings
-node_modules/
+Thumbs.db
+desktop.ini
+
+# Gradle
+.gradle/
+build/
+**/build/
+local.properties
+
+# Kotlin / Android
+*.iml
+.idea/
+.vscode/
+*.hprof
+*.orig
+*.class
+
+# Android generated
+**/captures/
+**/generated/
+**/obj/
+**/bin/
+**/lint/
+**/debug.keystore
+**/my-upload-key.jks
+
+# Keystore / secrets
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+
+# Firebase / Google
+google-services.json
+firebase-debug.log
+firebase*.json
+
+# Logs
+*.log
+
+# Misc
+*.tmp
+*.swp
+*.swo
