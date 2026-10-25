@@ -22,7 +22,7 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      - name: Prepare Android SDK
+      - name: Install Android SDK
         env:
           ANDROID_HOME: /home/runner/android-sdk
           ANDROID_SDK_ROOT: /home/runner/android-sdk
@@ -59,18 +59,16 @@ jobs:
           yes 2>/dev/null | /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null
           exit 0
 
-      - name: Install Android SDK packages
+      - name: Install SDK packages
         shell: bash
         run: |
           set -euxo pipefail
           /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Verify Gradle wrapper
+      - name: Make Gradle wrapper executable
         shell: bash
         run: |
           set -euxo pipefail
-          ls -l
-          test -f ./gradlew
           chmod +x ./gradlew
 
       - name: Build debug APK
