@@ -21,36 +21,45 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Install Android SDK command-line tools manually
+      - name: Set up Android SDK path
+        env:
+          ANDROID_HOME: /home/runner/android-sdk
         run: |
-          mkdir -p $HOME/android-sdk
-          cd $HOME/android-sdk
-          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O tools.zip
-          unzip -q tools.zip
-          rm -f tools.zip
+          mkdir -p "$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
 
-          if [ -d "$HOME/android-sdk/cmdline-tools" ]; then
-            echo "cmdline-tools folder already exists"
-          else
-            mkdir -p "$HOME/android-sdk/cmdline-tools"
-            if [ -d "$HOME/android-sdk/tools/bin" ]; then
-              mv "$HOME/android-sdk/tools" "$HOME/android-sdk/cmdline-tools"
-            fi
+      - name: Download Android command line tools
+        env:
+          ANDROID_HOME: /home/runner/android-sdk
+        run: |
+          cd "$ANDROID_HOME"
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdtools.zip
+          unzip -q cmdtools.zip
+          rm -f cmdtools.zip
+
+          if [ -d "$ANDROID_HOME/cmdline-tools" ] && [ ! -d "$ANDROID_HOME/cmdline-tools/latest" ]; then
+            mkdir -p "$ANDROID_HOME/cmdline-tools/latest"
+            cp -r "$ANDROID_HOME/cmdline-tools/." "$ANDROID_HOME/cmdline-tools/latest/"
           fi
 
-          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/cmdline-tools/bin" >> $GITHUB_PATH
-          echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
+          if [ ! -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+            echo "SDK tools not installed correctly"
+            ls -R "$ANDROID_HOME"
+            exit 1
+          fi
+
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
 
       - name: Accept Android SDK licenses
         run: |
-          yes | $HOME/android-sdk/cmdline-tools/bin/sdkmanager --licenses >/dev/null
+          yes | /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null
 
-      - name: Install Android SDK packages
+      - name: Install SDK packages
         run: |
-          $HOME/android-sdk/cmdline-tools/bin/sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Make Gradle wrapper executable
+      - name: Make gradlew executable
         run: chmod +x ./gradlew
 
       - name: Build debug APK
