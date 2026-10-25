@@ -1,14 +1,15 @@
 name: Build Android APK
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main, master ]
   pull_request:
-  workflow_dispatch:
 
 jobs:
   build-android-apk:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
@@ -18,55 +19,64 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
           cache: gradle
 
-      - name: Install Android SDK command-line tools
+      - name: Prepare Android SDK
         env:
           ANDROID_HOME: /home/runner/android-sdk
+          ANDROID_SDK_ROOT: /home/runner/android-sdk
+        shell: bash
         run: |
+          set -euxo pipefail
           mkdir -p "$ANDROID_HOME"
           cd "$ANDROID_HOME"
 
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdtools.zip
-          unzip -q cmdtools.zip
-          rm -f cmdtools.zip
+          if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdtools.zip
+            unzip -q -o cmdtools.zip
+            rm -f cmdtools.zip
 
-          if [ -d "$ANDROID_HOME/cmdline-tools" ] && [ ! -d "$ANDROID_HOME/cmdline-tools/latest" ]; then
-            if [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
+            if [ -d "$ANDROID_HOME/cmdline-tools" ] && [ ! -d "$ANDROID_HOME/cmdline-tools/latest" ]; then
               mkdir -p "$ANDROID_HOME/cmdline-tools/latest"
-              mv "$ANDROID_HOME/cmdline-tools/bin" "$ANDROID_HOME/cmdline-tools/latest/bin"
-              if [ -d "$ANDROID_HOME/cmdline-tools/lib" ]; then
-                mv "$ANDROID_HOME/cmdline-tools/lib" "$ANDROID_HOME/cmdline-tools/latest/lib"
-              fi
-              if [ -f "$ANDROID_HOME/cmdline-tools/source.properties" ]; then
-                mv "$ANDROID_HOME/cmdline-tools/source.properties" "$ANDROID_HOME/cmdline-tools/latest/source.properties"
-              fi
+              shopt -s dotglob nullglob
+              for entry in "$ANDROID_HOME/cmdline-tools"/*; do
+                if [ "$entry" != "$ANDROID_HOME/cmdline-tools/latest" ]; then
+                  mv "$entry" "$ANDROID_HOME/cmdline-tools/latest/"
+                fi
+              done
             fi
           fi
 
-          if [ ! -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
-            echo "SDK tools not installed correctly"
-            ls -R "$ANDROID_HOME"
-            exit 1
-          fi
-
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
 
       - name: Accept Android SDK licenses
+        shell: bash
         run: |
+          set -euxo pipefail
           yes | /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null
 
       - name: Install Android SDK packages
+        shell: bash
         run: |
+          set -euxo pipefail
           /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
+      - name: Verify Gradle wrapper
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ls -l
+          test -f ./gradlew
+          chmod +x ./gradlew
 
       - name: Build debug APK
-        run: bash ./gradlew assembleDebug
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash ./gradlew assembleDebug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
