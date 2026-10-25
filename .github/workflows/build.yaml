@@ -21,23 +21,26 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Download Android command line tools
+      - name: Install Android SDK command-line tools
         env:
           ANDROID_HOME: /home/runner/android-sdk
         run: |
-          mkdir -p "$ANDROID_HOME/cmdline-tools"
-          cd "$ANDROID_HOME/cmdline-tools"
+          mkdir -p "$ANDROID_HOME"
+          cd "$ANDROID_HOME"
 
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdtools.zip
           unzip -q cmdtools.zip
           rm -f cmdtools.zip
 
-          if [ -d "$ANDROID_HOME/cmdline-tools/cmdline-tools" ] && [ ! -d "$ANDROID_HOME/cmdline-tools/latest" ]; then
-            mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          if [ -d "$ANDROID_HOME/cmdline-tools" ] && [ ! -d "$ANDROID_HOME/cmdline-tools/latest" ]; then
+            if [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
+              mkdir -p "$ANDROID_HOME/cmdline-tools/latest"
+              cp -r "$ANDROID_HOME/cmdline-tools/." "$ANDROID_HOME/cmdline-tools/latest/"
+            fi
           fi
 
           if [ ! -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
-            echo "Android SDK command-line tools were not installed correctly"
+            echo "SDK tools not installed correctly"
             ls -R "$ANDROID_HOME"
             exit 1
           fi
