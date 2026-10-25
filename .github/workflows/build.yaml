@@ -55,8 +55,9 @@ jobs:
       - name: Accept Android SDK licenses
         shell: bash
         run: |
-          set -euxo pipefail
-          yes | /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null
+          set +e
+          yes 2>/dev/null | /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null
+          exit 0
 
       - name: Install Android SDK packages
         shell: bash
