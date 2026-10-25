@@ -21,7 +21,7 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Set up Android SDK path
+      - name: Create Android SDK directory
         env:
           ANDROID_HOME: /home/runner/android-sdk
         run: |
@@ -37,13 +37,26 @@ jobs:
           unzip -q cmdtools.zip
           rm -f cmdtools.zip
 
-          if [ -d "$ANDROID_HOME/cmdline-tools" ] && [ ! -d "$ANDROID_HOME/cmdline-tools/latest" ]; then
-            mkdir -p "$ANDROID_HOME/cmdline-tools/latest"
-            cp -r "$ANDROID_HOME/cmdline-tools/." "$ANDROID_HOME/cmdline-tools/latest/"
+          if [ ! -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+            mkdir -p "$ANDROID_HOME/cmdline-tools"
+            if [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
+              echo "cmdline-tools already present"
+            else
+              if [ -d "$ANDROID_HOME/tools/bin" ]; then
+                mv "$ANDROID_HOME/tools" "$ANDROID_HOME/cmdline-tools"
+              fi
+            fi
           fi
 
           if [ ! -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
-            echo "SDK tools not installed correctly"
+            if [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
+              mkdir -p "$ANDROID_HOME/cmdline-tools/latest"
+              cp -r "$ANDROID_HOME/cmdline-tools/." "$ANDROID_HOME/cmdline-tools/latest/"
+            fi
+          fi
+
+          if [ ! -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+            echo "Android SDK command-line tools were not installed correctly"
             ls -R "$ANDROID_HOME"
             exit 1
           fi
@@ -55,7 +68,7 @@ jobs:
         run: |
           yes | /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null
 
-      - name: Install SDK packages
+      - name: Install Android SDK packages
         run: |
           /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
