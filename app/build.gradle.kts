@@ -2,11 +2,11 @@ import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesS
 import java.time.Duration
 
 plugins {
-  alias(libs.plugins.android.application)
-  alias(libs.plugins.kotlin.compose)
-  alias(libs.plugins.google.devtools.ksp)
-  alias(libs.plugins.secrets)
-  alias(libs.plugins.google.services)
+    alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.google.devtools.ksp) apply false
+    alias(libs.plugins.secrets) apply false
+    alias(libs.plugins.google.services) apply false
 }
 
 android {
