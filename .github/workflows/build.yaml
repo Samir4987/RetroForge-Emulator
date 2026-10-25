@@ -21,38 +21,19 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Create Android SDK directory
-        env:
-          ANDROID_HOME: /home/runner/android-sdk
-        run: |
-          mkdir -p "$ANDROID_HOME"
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-
       - name: Download Android command line tools
         env:
           ANDROID_HOME: /home/runner/android-sdk
         run: |
-          cd "$ANDROID_HOME"
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          cd "$ANDROID_HOME/cmdline-tools"
+
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdtools.zip
           unzip -q cmdtools.zip
           rm -f cmdtools.zip
 
-          if [ ! -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
-            mkdir -p "$ANDROID_HOME/cmdline-tools"
-            if [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
-              echo "cmdline-tools already present"
-            else
-              if [ -d "$ANDROID_HOME/tools/bin" ]; then
-                mv "$ANDROID_HOME/tools" "$ANDROID_HOME/cmdline-tools"
-              fi
-            fi
-          fi
-
-          if [ ! -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
-            if [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
-              mkdir -p "$ANDROID_HOME/cmdline-tools/latest"
-              cp -r "$ANDROID_HOME/cmdline-tools/." "$ANDROID_HOME/cmdline-tools/latest/"
-            fi
+          if [ -d "$ANDROID_HOME/cmdline-tools/cmdline-tools" ] && [ ! -d "$ANDROID_HOME/cmdline-tools/latest" ]; then
+            mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
           fi
 
           if [ ! -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
