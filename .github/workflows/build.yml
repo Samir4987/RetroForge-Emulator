@@ -4,7 +4,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
 
 permissions:
@@ -20,7 +20,7 @@ jobs:
       ANDROID_SDK_ROOT: /home/runner/android-sdk
       GRADLE_VERSION: "9.3.1"
 
-      steps:
+    steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
@@ -29,34 +29,25 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
- 
-       -  name: Install Android SDK
-         uses: android-actions/setup-android@v4
-         with:
-         packages: ''
 
-       - name: Install required Android SDK packages
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+
+      - name: Install required Android SDK packages
         shell: bash
         run: |
           set -euxo pipefail
-
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0"
-                 - name: Install required Android SDK packages
+
+      - name: Bootstrap missing Gradle wrapper JAR
         shell: bash
         run: |
           set -euxo pipefail
-
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-36" \
-            "build-tools;36.0.0"
-       - name: Bootstrap missing Gradle wrapper JAR
-        shell: bash
-        run: |
-         set -euxo pipefail
 
           if [ -s gradle/wrapper/gradle-wrapper.jar ]; then
             echo "Gradle wrapper JAR already exists."
@@ -77,10 +68,8 @@ jobs:
           mkdir wrapper-project
           cd wrapper-project
 
-          printf 'rootProject.name = "wrapper-bootstrap"\n' \
-            > settings.gradle
-          printf '// Temporary wrapper bootstrap project\n' \
-            > build.gradle
+          printf 'rootProject.name = "wrapper-bootstrap"\n' > settings.gradle
+          printf '// Temporary wrapper bootstrap project\n' > build.gradle
 
           "../gradle-${GRADLE_VERSION}/bin/gradle" wrapper \
             --gradle-version "$GRADLE_VERSION" \
