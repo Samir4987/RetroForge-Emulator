@@ -14,7 +14,8 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.retroforge"
+    applicationId = "com.aistudio.retroforge.gkqwnx"
+}
         minSdk = 24
         targetSdk = 36
         versionCode = 1
