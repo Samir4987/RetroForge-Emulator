@@ -3,17 +3,20 @@ package com.example.emulator
 import java.io.File
 
 /**
- * Boundary between the Android UI and a real Libretro JNI frontend.
+ * Boundary between the Android UI and the Libretro JNI frontend.
  *
- * This class deliberately fails closed: a system is NOT considered emulated
- * until the JNI frontend and a matching native core are both present.
- * It does not replace EmulatorCore's demo simulations.
+ * A successful ROM load means the native core accepted the ROM; it does not
+ * by itself mean video, audio, input, saves, or UI presentation are complete.
  */
 class LibretroRuntime(
-    private val nativeLibrary: File,
+    private val frontendLibrary: File,
     private val coreSpec: LibretroCoreSpec
 ) {
     enum class State { UNAVAILABLE, READY, GAME_LOADED, CLOSED }
+
+    private var native: LibretroNative? = null
+    private val coreFile: File
+        get() = File(frontendLibrary.parentFile, coreSpec.libraryFileName)
 
     var state: State = State.UNAVAILABLE
         private set
@@ -22,20 +25,21 @@ class LibretroRuntime(
         get() = state == State.READY || state == State.GAME_LOADED
 
     init {
-        // Native loading is deferred until both required binaries exist.
-        if (nativeLibrary.isFile && coreSpec.libraryFileName.isNotBlank()) {
+        if (frontendLibrary.isFile && coreFile.isFile) {
             state = State.READY
         }
     }
 
-    /**
-     * Returns false until the JNI frontend is built and its ABI-specific core
-     * is installed. Never silently reports a demo simulation as real emulation.
-     */
     fun loadRom(rom: File): Result<Unit> {
+        if (state == State.CLOSED) {
+            return Result.failure(IllegalStateException("Libretro runtime is closed."))
+        }
         if (!isAvailable) {
             return Result.failure(
-                IllegalStateException("Libretro frontend/core is not installed for ${coreSpec.system}.")
+                IllegalStateException(
+                    "Libretro frontend/core is not installed for ${coreSpec.system}. " +
+                        "Expected core at ${coreFile.absolutePath}."
+                )
             )
         }
         if (!rom.isFile || rom.length() == 0L) {
@@ -46,13 +50,26 @@ class LibretroRuntime(
             return Result.failure(IllegalArgumentException("Unsupported ROM extension: .$extension"))
         }
 
-        // This layer must not claim success before JNI is connected.
-        return Result.failure(
-            UnsupportedOperationException("JNI Libretro bridge is not connected yet.")
-        )
+        return runCatching {
+            val bridge = native ?: LibretroNative().also { native = it }
+            val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
+            if (error != null) {
+                bridge.nativeClose()
+                throw IllegalStateException(error)
+            }
+            state = State.GAME_LOADED
+        }
+    }
+
+    /** Advances one core frame. Rendering/audio/input callbacks are not yet implemented. */
+    fun runFrame(): Result<Unit> = runCatching {
+        check(state == State.GAME_LOADED) { "Load a ROM before running frames." }
+        check(native?.nativeRunFrame() == true) { "Native Libretro core is not running." }
     }
 
     fun close() {
+        native?.nativeClose()
+        native = null
         state = State.CLOSED
     }
 }
