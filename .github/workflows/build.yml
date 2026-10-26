@@ -1,0 +1,107 @@
+
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-android-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    env:
+      ANDROID_HOME: /home/runner/android-sdk
+      ANDROID_SDK_ROOT: /home/runner/android-sdk
+      GRADLE_VERSION: "9.3.1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK packages
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
+
+      - name: Bootstrap missing Gradle wrapper JAR
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          if [ -s gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Gradle wrapper JAR already exists."
+            exit 0
+          fi
+
+          TEMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TEMP_DIR"' EXIT
+
+          cd "$TEMP_DIR"
+
+          wget -q \
+            "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" \
+            -O gradle.zip
+
+          unzip -q gradle.zip
+
+          mkdir wrapper-project
+          cd wrapper-project
+
+          printf 'rootProject.name = "wrapper-bootstrap"\n' \
+            > settings.gradle
+          printf '// Temporary wrapper bootstrap project\n' \
+            > build.gradle
+
+          "../gradle-${GRADLE_VERSION}/bin/gradle" wrapper \
+            --gradle-version "$GRADLE_VERSION" \
+            --distribution-type bin
+
+          test -s gradle/wrapper/gradle-wrapper.jar
+
+          mkdir -p "$GITHUB_WORKSPACE/gradle/wrapper"
+
+          cp gradle/wrapper/gradle-wrapper.jar \
+            "$GITHUB_WORKSPACE/gradle/wrapper/gradle-wrapper.jar"
+
+          test -s "$GITHUB_WORKSPACE/gradle/wrapper/gradle-wrapper.jar"
+
+      - name: Make Gradle wrapper executable
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x ./gradlew
+          test -s gradle/wrapper/gradle-wrapper.properties
+          test -s gradle/wrapper/gradle-wrapper.jar
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroForge-Android-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
