@@ -78,7 +78,6 @@ jobs:
           test -s gradle/wrapper/gradle-wrapper.jar
 
           mkdir -p "$GITHUB_WORKSPACE/gradle/wrapper"
-
           cp gradle/wrapper/gradle-wrapper.jar \
             "$GITHUB_WORKSPACE/gradle/wrapper/gradle-wrapper.jar"
 
@@ -92,11 +91,77 @@ jobs:
           test -s gradle/wrapper/gradle-wrapper.properties
           test -s gradle/wrapper/gradle-wrapper.jar
 
+      - name: Verify Firebase configuration
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -s app/google-services.json
+          python3 - <<'PY'
+          import json
+
+          path = "app/google-services.json"
+          with open(path, encoding="utf-8") as f:
+              data = json.load(f)
+
+          expected = "com.aistudio.retroforge.gkqwnx"
+          clients = data.get("client", [])
+          matches = [
+              c for c in clients
+              if c.get("client_info", {}).get(
+                  "android_client_info", {}
+              ).get("package_name") == expected
+          ]
+
+          if not matches:
+              raise SystemExit(
+                  f"No Firebase Android client matches {expected}"
+              )
+
+          web_clients = [
+              oauth for client in matches
+              for oauth in client.get("oauth_client", [])
+              if oauth.get("client_type") == 3
+          ]
+
+          if not web_clients:
+              raise SystemExit(
+                  "No web OAuth client (client_type 3) found"
+              )
+
+          print("Firebase package and web OAuth client verified.")
+          PY
+
+      - name: Generate Firebase resources
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./gradlew --no-daemon :app:processDebugGoogleServices
+
+      - name: Check generated Firebase resources
+        if: always()
+        shell: bash
+        run: |
+          echo "Generated Google Services files:"
+          find app/build/generated/res/google-services \
+            -type f -print 2>/dev/null || true
+
+          echo "Searching for default_web_client_id:"
+          grep -R -n "default_web_client_id" \
+            app/build/generated/res/google-services \
+            2>/dev/null || true
+
       - name: Build debug APK
         shell: bash
         run: |
           set -euxo pipefail
           ./gradlew --no-daemon assembleDebug
+
+      - name: Verify APK exists
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -104,4 +169,4 @@ jobs:
           name: RetroForge-Android-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-           AuthScreen.kt:250:36 Unresolved reference 'default_web_client_id'
+          compression-level: 0
