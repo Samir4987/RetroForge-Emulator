@@ -1,3 +1,4 @@
+
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 import java.time.Duration
 
@@ -14,14 +15,14 @@ android {
     compileSdk = 36
 
     defaultConfig {
-    applicationId = "com.aistudio.retroforge.gkqwnx"
-}
+        applicationId = "com.aistudio.retroforge.gkqwnx"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner =
+            "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
