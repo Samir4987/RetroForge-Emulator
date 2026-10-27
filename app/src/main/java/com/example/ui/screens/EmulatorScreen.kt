@@ -130,14 +130,15 @@ fun EmulatorScreen(
                 val frontend = File(context.applicationInfo.nativeLibraryDir, "libretroforge_libretro.so")
                 val candidate = LibretroRuntime(frontend, coreSpec)
                 if (candidate.isAvailable) {
-                    temporaryRom = File.createTempFile("retroforge-gba-", ".gba", context.cacheDir)
-                    temporaryRom.writeBytes(romBytes)
-                    if (candidate.loadRom(temporaryRom).isSuccess) {
+                    val romFile = File.createTempFile("retroforge-gba-", ".gba", context.cacheDir)
+                    temporaryRom = romFile
+                    romFile.writeBytes(romBytes)
+                    if (candidate.loadRom(romFile).isSuccess) {
                         runtime = candidate
                         isUsingLibretro = true
                     } else {
                         candidate.close()
-                        temporaryRom.delete()
+                        romFile.delete()
                         temporaryRom = null
                     }
                 }
