@@ -2,6 +2,7 @@
 #include <android/log.h>
 #include <dlfcn.h>
 #include <cstdint>
+#include <atomic>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -34,6 +35,7 @@ std::vector<uint32_t> video_pixels;
 unsigned video_width = 0;
 unsigned video_height = 0;
 unsigned pixel_format = 0;
+std::atomic<uint16_t> joypad_mask{0};
 constexpr unsigned kMaxVideoDimension = 1024;
 
 using SetEnvironment = void (*)(retro_environment_t);
@@ -139,7 +141,11 @@ void video_refresh(const void* data, unsigned width, unsigned height, size_t pit
 void audio_sample(int16_t, int16_t) {}
 size_t audio_sample_batch(const int16_t*, size_t frames) { return frames; }
 void input_poll() {}
-int16_t input_state(unsigned, unsigned, unsigned, unsigned) { return 0; }
+int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
+    // RETRO_DEVICE_JOYPAD = 1; the standard joypad IDs occupy bits 0..15.
+    if (port != 0 || device != 1 || index != 0 || id >= 16) return 0;
+    return (joypad_mask.load(std::memory_order_relaxed) & (uint16_t{1} << id)) != 0 ? 1 : 0;
+}
 
 template <typename T> bool symbol(T& out, const char* name) {
     out = reinterpret_cast<T>(dlsym(core, name));
@@ -177,6 +183,7 @@ void close_core() {
         video_width = 0;
         video_height = 0;
         pixel_format = 0;
+        joypad_mask.store(0, std::memory_order_relaxed);
     }
     reset_symbols();
 }
@@ -313,4 +320,9 @@ Java_com_example_emulator_LibretroNative_nativeCopyVideoFrame(JNIEnv* env, jobje
     }
     env->SetIntArrayRegion(destination, 0, static_cast<jsize>(snapshot.size()), snapshot.data());
     return env->ExceptionCheck() ? JNI_FALSE : JNI_TRUE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_emulator_LibretroNative_nativeSetJoypadState(JNIEnv*, jobject, jint mask) {
+    joypad_mask.store(static_cast<uint16_t>(mask & 0xffff), std::memory_order_relaxed);
 }
