@@ -1,5 +1,6 @@
 package com.example.emulator
 
+import android.graphics.Bitmap
 import java.io.File
 
 /**
@@ -61,10 +62,32 @@ class LibretroRuntime(
         }
     }
 
-    /** Advances one core frame. Rendering/audio/input callbacks are not yet implemented. */
+    /** Advances one core frame. The core may emit a new video frame during this call. */
     fun runFrame(): Result<Unit> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before running frames." }
         check(native?.nativeRunFrame() == true) { "Native Libretro core is not running." }
+    }
+
+    /**
+     * Copies the most recent core frame into an Android ARGB_8888 bitmap.
+     * Returns null until the core has submitted a valid frame.
+     */
+    fun readVideoFrame(): Bitmap? {
+        if (state != State.GAME_LOADED) return null
+        val bridge = native ?: return null
+        val dimensions = bridge.nativeVideoFrameInfo() ?: return null
+        if (dimensions.size < 2) return null
+        val width = dimensions[0]
+        val height = dimensions[1]
+        if (width <= 0 || height <= 0 || width > 1024 || height > 1024) return null
+        val count = width.toLong() * height.toLong()
+        if (count > Int.MAX_VALUE) return null
+
+        val pixels = IntArray(count.toInt())
+        if (!bridge.nativeCopyVideoFrame(pixels)) return null
+        return runCatching {
+            Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+        }.getOrNull()
     }
 
     fun close() {
