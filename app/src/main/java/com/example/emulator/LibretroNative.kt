@@ -10,6 +10,7 @@ internal class LibretroNative {
     external fun nativeRunFrame(): Boolean
     external fun nativeVideoFrameInfo(): IntArray?
     external fun nativeCopyVideoFrame(destination: IntArray): Boolean
+    external fun nativeSetJoypadState(mask: Int)
     external fun nativeClose()
 
     companion object {
