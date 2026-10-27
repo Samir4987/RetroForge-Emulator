@@ -52,12 +52,22 @@ class LibretroRuntime(
 
         return runCatching {
             val bridge = native ?: LibretroNative().also { native = it }
-            val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
-            if (error != null) {
-                bridge.nativeClose()
-                throw IllegalStateException(error)
+            try {
+                val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
+                if (error != null) throw IllegalStateException(error)
+                state = State.GAME_LOADED
+            } catch (failure: Throwable) {
+                // nativeOpen closes any previously loaded core before attempting a new load.
+                // Keep Kotlin state in sync if the replacement ROM fails to load.
+                runCatching { bridge.nativeClose() }
+                native = null
+                state = if (frontendLibrary.isFile && coreFile.isFile) {
+                    State.READY
+                } else {
+                    State.UNAVAILABLE
+                }
+                throw failure
             }
-            state = State.GAME_LOADED
         }
     }
 
