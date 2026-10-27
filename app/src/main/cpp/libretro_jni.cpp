@@ -2,7 +2,10 @@
 #include <android/log.h>
 #include <dlfcn.h>
 #include <cstdint>
+#include <fstream>
+#include <limits>
 #include <string>
+#include <vector>
 
 #define LOG_TAG "RetroForgeLibretro"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -22,6 +25,9 @@ struct PixelFormat { unsigned format; };
 
 void* core = nullptr;
 bool initialized = false;
+bool game_loaded = false;
+std::vector<uint8_t> rom_data;
+
 using SetEnvironment = void (*)(retro_environment_t);
 using SetVideo = void (*)(retro_video_refresh_t);
 using SetAudio = void (*)(retro_audio_sample_t);
@@ -48,14 +54,15 @@ UnloadGame unload_game = nullptr;
 GetAvInfo get_av_info = nullptr;
 
 bool environment(unsigned command, void* data) {
-    // RETRO_ENVIRONMENT_SET_PIXEL_FORMAT = 10; accept 0RGB1555 and XRGB8888.
+    // RETRO_ENVIRONMENT_SET_PIXEL_FORMAT = 10.
     if (command == 10 && data) {
         const auto format = *static_cast<PixelFormat*>(data);
         return format.format == 0 || format.format == 1 || format.format == 2;
     }
-    // Unknown optional environment requests are intentionally unsupported.
     return false;
 }
+
+// Playback pipelines are intentionally placeholders until video/audio/input are connected.
 void video_refresh(const void*, unsigned, unsigned, size_t) {}
 void audio_sample(int16_t, int16_t) {}
 size_t audio_sample_batch(const int16_t*, size_t frames) { return frames; }
@@ -68,19 +75,47 @@ template <typename T> bool symbol(T& out, const char* name) {
     return out != nullptr;
 }
 
+void reset_symbols() {
+    set_environment = nullptr;
+    set_video = nullptr;
+    set_audio = nullptr;
+    set_audio_batch = nullptr;
+    set_input_poll = nullptr;
+    set_input_state = nullptr;
+    core_init = nullptr;
+    core_deinit = nullptr;
+    get_system_info = nullptr;
+    load_game = nullptr;
+    run_frame = nullptr;
+    unload_game = nullptr;
+    get_av_info = nullptr;
+}
+
 void close_core() {
+    if (game_loaded && unload_game) unload_game();
+    game_loaded = false;
     if (initialized && core_deinit) core_deinit();
     initialized = false;
     if (core) dlclose(core);
     core = nullptr;
+    rom_data.clear();
+    reset_symbols();
 }
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstring core_path, jstring rom_path) {
     close_core();
+    if (!core_path || !rom_path) return env->NewStringUTF("Core path and ROM path are required.");
+
     const char* native_core_path = env->GetStringUTFChars(core_path, nullptr);
+    if (!native_core_path) return env->NewStringUTF("Could not read core path.");
     const char* native_rom_path = env->GetStringUTFChars(rom_path, nullptr);
+    if (!native_rom_path) {
+        env->ReleaseStringUTFChars(core_path, native_core_path);
+        return env->NewStringUTF("Could not read ROM path.");
+    }
+
     core = dlopen(native_core_path, RTLD_NOW | RTLD_LOCAL);
     env->ReleaseStringUTFChars(core_path, native_core_path);
     if (!core) {
@@ -121,24 +156,52 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
     SystemInfo info{};
     get_system_info(&info);
     GameInfo game{native_rom_path, nullptr, 0, nullptr};
-    const bool loaded = info.need_fullpath && load_game(&game);
+
+    if (!info.need_fullpath) {
+        std::ifstream input(native_rom_path, std::ios::binary | std::ios::ate);
+        if (!input) {
+            env->ReleaseStringUTFChars(rom_path, native_rom_path);
+            close_core();
+            return env->NewStringUTF("Could not open ROM file.");
+        }
+        const std::streamoff length = input.tellg();
+        if (length <= 0 || static_cast<unsigned long long>(length) >
+                static_cast<unsigned long long>(std::numeric_limits<size_t>::max())) {
+            env->ReleaseStringUTFChars(rom_path, native_rom_path);
+            close_core();
+            return env->NewStringUTF("ROM file is empty or too large.");
+        }
+        rom_data.resize(static_cast<size_t>(length));
+        input.seekg(0, std::ios::beg);
+        if (!input.read(reinterpret_cast<char*>(rom_data.data()), length)) {
+            env->ReleaseStringUTFChars(rom_path, native_rom_path);
+            close_core();
+            return env->NewStringUTF("Could not read complete ROM file.");
+        }
+        game.data = rom_data.data();
+        game.size = rom_data.size();
+    }
+
+    const bool loaded = load_game(&game);
     env->ReleaseStringUTFChars(rom_path, native_rom_path);
     if (!loaded) {
         close_core();
-        return env->NewStringUTF("Core initialized, but ROM loading failed (core may require in-memory ROM data).");
+        return env->NewStringUTF("Libretro core rejected the ROM.");
     }
+    game_loaded = true;
+    AvInfo av_info{};
+    get_av_info(&av_info);
     return nullptr;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_emulator_LibretroNative_nativeRunFrame(JNIEnv*, jobject) {
-    if (!initialized || !run_frame) return JNI_FALSE;
+    if (!initialized || !game_loaded || !run_frame) return JNI_FALSE;
     run_frame();
     return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_emulator_LibretroNative_nativeClose(JNIEnv*, jobject) {
-    if (initialized && unload_game) unload_game();
     close_core();
 }
