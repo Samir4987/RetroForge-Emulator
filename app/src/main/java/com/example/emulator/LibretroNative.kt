@@ -11,6 +11,8 @@ internal class LibretroNative {
     external fun nativeVideoFrameInfo(): IntArray?
     external fun nativeCopyVideoFrame(destination: IntArray): Boolean
     external fun nativeSetJoypadState(mask: Int)
+    external fun nativeGetAudioSampleRate(): Double
+    external fun nativeReadAudio(destination: ShortArray): Int
     external fun nativeClose()
 
     companion object {
