@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -52,6 +53,9 @@ import com.example.data.model.SaveStateDto
 import com.example.data.repository.SaveStateRepository
 import com.example.emulator.ControllerSkin
 import com.example.emulator.EmulatorCore
+import com.example.emulator.LibretroCoreSpec
+import com.example.emulator.LibretroRuntime
+import com.example.emulator.RetroSystem
 import com.example.ui.components.RetroScreenView
 import com.example.ui.components.SaveSlotDialog
 import com.example.ui.components.VirtualController
@@ -61,6 +65,8 @@ import com.example.data.local.RomLibraryRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
+import java.io.File
 
 @Composable
 fun EmulatorScreen(
@@ -82,6 +88,8 @@ fun EmulatorScreen(
     var showSkinMenu by remember { mutableStateOf(false) }
 
     val saveStates = remember { mutableStateListOf<SaveStateDto>() }
+    var libretroBitmap by remember(game.id) { mutableStateOf<Bitmap?>(null) }
+    var isUsingLibretro by remember(game.id) { mutableStateOf(false) }
 
     // Intercept back button to return safely to Library
     BackHandler {
@@ -107,15 +115,63 @@ fun EmulatorScreen(
         }
     }
 
-    // High performance frame loop
+    // Prefer the real GBA core only when both a ROM and a packaged core are available.
+    // Otherwise the existing demo/simulation remains the fallback.
     var frameTicker by remember { mutableStateOf(0L) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            emulatorCore.tick()
-            frameTicker = emulatorCore.frameCounter
-            // 60 FPS standard timing adjusted for fast forward
-            val frameDelay = (16L / emulatorCore.fastForwardMultiplier.toLong().coerceAtLeast(1L)).coerceAtLeast(4L)
-            delay(frameDelay)
+    LaunchedEffect(game) {
+        var runtime: LibretroRuntime? = null
+        var temporaryRom: File? = null
+        try {
+            val romBytes = game.romBytes
+            val coreSpec = LibretroCoreSpec.forSystem(RetroSystem.GBA)
+            if (game.system.equals("GBA", ignoreCase = true) &&
+                romBytes != null && romBytes.isNotEmpty() && coreSpec != null
+            ) {
+                val frontend = File(context.applicationInfo.nativeLibraryDir, "libretroforge_libretro.so")
+                val candidate = LibretroRuntime(frontend, coreSpec)
+                if (candidate.isAvailable) {
+                    temporaryRom = File.createTempFile("retroforge-gba-", ".gba", context.cacheDir)
+                    temporaryRom.writeBytes(romBytes)
+                    if (candidate.loadRom(temporaryRom).isSuccess) {
+                        runtime = candidate
+                        isUsingLibretro = true
+                    } else {
+                        candidate.close()
+                        temporaryRom.delete()
+                        temporaryRom = null
+                    }
+                }
+            }
+
+            while (isActive) {
+                val activeRuntime = runtime
+                if (!emulatorCore.isPaused) {
+                    if (activeRuntime != null) {
+                        activeRuntime.updateInput(emulatorCore.inputState)
+                        val result = activeRuntime.runFrame()
+                        if (result.isSuccess) {
+                            activeRuntime.readVideoFrame()?.let { libretroBitmap = it }
+                        } else {
+                            activeRuntime.close()
+                            runtime = null
+                            isUsingLibretro = false
+                            libretroBitmap = null
+                            emulatorCore.tick()
+                        }
+                    } else {
+                        emulatorCore.tick()
+                    }
+                }
+                frameTicker = emulatorCore.frameCounter
+                // 60 FPS standard timing adjusted for fast forward.
+                val frameDelay = (16L / emulatorCore.fastForwardMultiplier.toLong().coerceAtLeast(1L)).coerceAtLeast(4L)
+                delay(frameDelay)
+            }
+        } finally {
+            runtime?.close()
+            temporaryRom?.delete()
+            isUsingLibretro = false
+            libretroBitmap = null
         }
     }
 
@@ -167,7 +223,7 @@ fun EmulatorScreen(
                                 color = Color.White
                             )
                             Text(
-                                text = "${game.system} • ${emulatorCore.playTimeSeconds}s",
+                                text = "${game.system} • ${if (isUsingLibretro) "REAL CORE" else "${emulatorCore.playTimeSeconds}s"}",
                                 fontSize = 10.sp,
                                 color = Color(0xFF00E5FF),
                                 fontFamily = FontFamily.Monospace
@@ -311,7 +367,7 @@ fun EmulatorScreen(
             // Game Display View
             RetroScreenView(
                 system = emulatorCore.currentSystem,
-                screenBitmap = emulatorCore.screenBitmap,
+                screenBitmap = libretroBitmap ?: emulatorCore.screenBitmap,
                 bottomScreenBitmap = emulatorCore.bottomScreenBitmap,
                 isRewinding = emulatorCore.isRewinding,
                 fastForwardMultiplier = emulatorCore.fastForwardMultiplier,
