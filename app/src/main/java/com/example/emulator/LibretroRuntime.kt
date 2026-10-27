@@ -15,11 +15,12 @@ class LibretroRuntime(
 ) {
     enum class State { UNAVAILABLE, READY, GAME_LOADED, CLOSED }
 
-    private var native: LibretroNative? = null
+    @Volatile private var native: LibretroNative? = null
+    private var audioOutput: LibretroAudioOutput? = null
     private val coreFile: File
         get() = File(frontendLibrary.parentFile, coreSpec.libraryFileName)
 
-    var state: State = State.UNAVAILABLE
+    @Volatile var state: State = State.UNAVAILABLE
         private set
 
     val isAvailable: Boolean
@@ -52,13 +53,22 @@ class LibretroRuntime(
         }
 
         return runCatching {
+            audioOutput?.close()
+            audioOutput = null
             val bridge = native ?: LibretroNative().also { native = it }
             val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
             if (error != null) {
                 bridge.nativeClose()
+                state = State.READY
                 throw IllegalStateException(error)
             }
             state = State.GAME_LOADED
+            val output = LibretroAudioOutput(this)
+            if (output.start(bridge.nativeGetAudioSampleRate().toInt())) {
+                audioOutput = output
+            } else {
+                output.close()
+            }
         }
     }
 
@@ -72,6 +82,12 @@ class LibretroRuntime(
     fun updateInput(input: EmulatorInputState) {
         if (state != State.GAME_LOADED) return
         native?.nativeSetJoypadState(input.toLibretroJoypadMask())
+    }
+
+    /** Copies queued stereo PCM samples into the supplied buffer for the audio output worker. */
+    internal fun readAudioSamples(destination: ShortArray): Int {
+        if (state != State.GAME_LOADED) return 0
+        return native?.nativeReadAudio(destination)?.coerceIn(0, destination.size - (destination.size % 2)) ?: 0
     }
 
     /**
@@ -97,6 +113,8 @@ class LibretroRuntime(
     }
 
     fun close() {
+        audioOutput?.close()
+        audioOutput = null
         native?.nativeClose()
         native = null
         state = State.CLOSED
