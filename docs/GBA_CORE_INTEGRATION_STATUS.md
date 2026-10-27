@@ -10,8 +10,11 @@ emulation path is developed and tested.
 
 ## Current state observed in the repository
 
-- `LibretroCoreSpec` lists `skyemu_libretro_android.so` as a candidate for GBA,
-  but a candidate entry is metadata; it does not package or build that core.
+- The GBA candidate now points to `mgba_libretro_android.so` from the
+  [Libretro mGBA core](https://github.com/libretro/mgba). Libretro documents
+  mGBA as an MPL-2.0-licensed GBA core that also supports GB/GBC and accepts
+  `.gba` content: https://docs.libretro.com/library/mgba/.
+- The candidate entry is metadata only; it does not package or build the core.
 - `LibretroRuntime` checks for both the frontend and core shared libraries,
   loads a ROM, and can call the native frame runner.
 - `libretro_jni.cpp` dynamically resolves the expected Libretro API symbols
@@ -39,9 +42,12 @@ emulation path is developed and tested.
 
 ## Required work before calling GBA integration playable
 
-1. Select a maintained, compatible GBA core and document its license and build
-   process. Build from source for supported Android ABIs; do not assume a
-   prebuilt library exists just because its filename appears in the catalog.
+1. Build and pin the selected mGBA Libretro source revision for the supported
+   Android ABIs. The documented Libretro Android build route uses the
+   `libretro-super` scripts (`libretro-fetch.sh` and
+   `libretro-build-android-mk.sh`); verify the resulting ABI libraries and
+   record the exact source revision before packaging. Do not assume a core
+   exists just because its filename appears in the catalog.
 2. Verify the conditional GBA screen integration on a device, including frame
    pacing, audio stability, pause/resume, and cleanup when leaving the screen.
 3. Route audio samples through an Android audio output path with bounded
@@ -56,7 +62,8 @@ emulation path is developed and tested.
 
 ## Validation checklist
 
-- [ ] Maintained GBA core source, version/commit, and license recorded
+- [x] GBA core candidate selected: mGBA Libretro, MPL-2.0 (source/version not pinned yet)
+- [ ] mGBA source revision pinned and core built for supported Android ABIs
 - [ ] Core built for each packaged Android ABI
 - [ ] Homebrew ROM loads and advances frames on-device
 - [x] Native video callback captures bounded ARGB frames and exposes them to Kotlin
@@ -74,8 +81,8 @@ emulation path is developed and tested.
 ## Current validation status
 
 Native video capture, bounded stereo audio buffering/output, joypad mapping, and
-conditional GBA screen routing have been committed on this branch. No GBA core
+conditional GBA screen routing have been committed on this branch. No mGBA core
 binary is packaged in the app yet, so the real-core path remains dormant unless
-a compatible core is added to the APK. The broader integration branch's Android
+a compatible core is built and added to the APK. The broader integration branch's Android
 APK workflow is being checked separately and does not validate these GBA-specific
 native changes. No device-level GBA playback has been verified.
