@@ -80,8 +80,9 @@ emulation path is developed and tested.
 
 ## Current validation status
 
-Native video capture, bounded stereo audio buffering/output, joypad mapping, and
-conditional GBA screen routing have been committed on this branch. No mGBA core
+Native video capture, bounded stereo audio buffering/output, joypad mapping, conditional
+GBA screen routing, and unit tests for the input mapping/core candidate have been
+committed on this branch. No mGBA core
 binary is packaged in the app yet, so the real-core path remains dormant unless
 a compatible core is built and added to the APK. The broader integration branch's Android
 APK workflow is being checked separately and does not validate these GBA-specific
