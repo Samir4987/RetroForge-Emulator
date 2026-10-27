@@ -22,8 +22,11 @@ emulation path is developed and tested.
 - `LibretroNative` exposes frame dimensions/pixel copying, and
   `LibretroRuntime.readVideoFrame()` can return the latest frame as an Android
   bitmap. This capture path is not yet wired into `EmulatorScreen`'s renderer.
-- The audio callbacks still emit no sound and input callbacks still report no
-  buttons. The frontend is therefore not a playable emulator yet.
+- The audio callbacks still emit no sound. The input callback now reads a
+  thread-safe player-one joypad mask, and Kotlin maps the app's A/B/X/Y, D-pad,
+  Start/Select, and L/R state to standard Libretro IDs. The UI frame loop does
+  not yet feed that state to a live runtime, so end-to-end controls are pending.
+  The frontend is therefore not a playable emulator yet.
 - A successful `retro_load_game()` only confirms that the core accepted the
   ROM. It does not confirm that the frontend can present frames or route input
   and audio.
@@ -37,8 +40,8 @@ emulation path is developed and tested.
    renderer, including frame-loop scheduling and lifecycle/threading checks.
 3. Route audio samples through an Android audio output path with bounded
    buffering and correct sample-rate handling.
-4. Map the app's controller/touch input to Libretro joypad state, including
-   polling and release behavior.
+4. Feed the existing UI input state into the new Libretro joypad setter from
+   the frame loop, including pause/release behavior and lifecycle cleanup.
 5. Verify core/ROM lifecycle cleanup, failure paths, and repeated game loads.
 6. Add tests or a reproducible manual test procedure using legally distributable
    homebrew test ROMs. Do not bundle commercial games or proprietary BIOS files.
@@ -53,7 +56,8 @@ emulation path is developed and tested.
 - [x] Native video callback captures bounded ARGB frames and exposes them to Kotlin
 - [ ] Real core video is visible in the app
 - [ ] Audio output is audible and stable
-- [ ] Touch/controller input changes gameplay and releases correctly
+- [x] Native Libretro joypad mask and Kotlin button-ID mapping implemented
+- [ ] UI controller state reaches the live core and changes gameplay
 - [ ] Closing/reloading a ROM releases native resources safely
 - [ ] Existing demo mode still works
 - [ ] CI build and device smoke-test results recorded
