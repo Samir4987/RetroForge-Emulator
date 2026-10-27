@@ -38,7 +38,8 @@ demo/simulation path must remain available as a fallback.
 
 ## Validation status
 
-The Android APK workflow was triggered for the runtime lifecycle fix and is
-being checked separately. A successful APK build would validate compilation,
-not prove any real emulator core is packaged or playable. No device-level
-real-core playback has been verified.
+Android APK CI passed for commit `d61a0ab1fa538a06f71a55aa828d3b09751fef81`:
+Gradle assembled the debug APK, the APK existence check passed, and the artifact
+upload completed. This validates the broader branch's build, not that any real
+emulator core is packaged or playable. No device-level real-core playback has
+been verified.
