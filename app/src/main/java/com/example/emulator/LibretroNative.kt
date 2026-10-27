@@ -8,6 +8,8 @@ package com.example.emulator
 internal class LibretroNative {
     external fun nativeOpen(corePath: String, romPath: String): String?
     external fun nativeRunFrame(): Boolean
+    external fun nativeVideoFrameInfo(): IntArray?
+    external fun nativeCopyVideoFrame(destination: IntArray): Boolean
     external fun nativeClose()
 
     companion object {
