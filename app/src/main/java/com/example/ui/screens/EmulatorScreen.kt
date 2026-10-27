@@ -282,41 +282,44 @@ fun EmulatorScreen(
                             )
                         }
 
-                        // Quick Save Slot 0 Button
-                        IconButton(
-                            onClick = {
-                                saveStateToSlot(
-                                    slot = 0,
-                                    game = game,
-                                    emulatorCore = emulatorCore,
-                                    saveStateRepository = saveStateRepository,
-                                    saveStates = saveStates,
-                                    onSaved = {
-                                        Toast.makeText(context, "Quick Saved to Slot 1", Toast.LENGTH_SHORT).show()
-                                    }
+                        // Demo save states currently serialize the simulation engine only.
+                        if (!isUsingLibretro) {
+                            // Quick Save Slot 0 Button
+                            IconButton(
+                                onClick = {
+                                    saveStateToSlot(
+                                        slot = 0,
+                                        game = game,
+                                        emulatorCore = emulatorCore,
+                                        saveStateRepository = saveStateRepository,
+                                        saveStates = saveStates,
+                                        onSaved = {
+                                            Toast.makeText(context, "Quick Saved to Slot 1", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                },
+                                modifier = Modifier.testTag("button_quick_save")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Save,
+                                    contentDescription = "Quick Save",
+                                    tint = Color(0xFF4CAF50),
+                                    modifier = Modifier.size(20.dp)
                                 )
-                            },
-                            modifier = Modifier.testTag("button_quick_save")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Save,
-                                contentDescription = "Quick Save",
-                                tint = Color(0xFF4CAF50),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                            }
 
-                        // Save Slots Modal Button
-                        IconButton(
-                            onClick = { showSlotDialog = true },
-                            modifier = Modifier.testTag("button_open_slots")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ViewList,
-                                contentDescription = "Save Slots",
-                                tint = Color(0xFF29B6F6),
-                                modifier = Modifier.size(20.dp)
-                            )
+                            // Save Slots Modal Button
+                            IconButton(
+                                onClick = { showSlotDialog = true },
+                                modifier = Modifier.testTag("button_open_slots")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ViewList,
+                                    contentDescription = "Save Slots",
+                                    tint = Color(0xFF29B6F6),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
 
                         // CRT Filter Toggle
@@ -406,7 +409,7 @@ fun EmulatorScreen(
         }
 
         // Save State Slots Dialog
-        if (showSlotDialog) {
+        if (showSlotDialog && !isUsingLibretro) {
             SaveSlotDialog(
                 gameTitle = game.title,
                 systemName = game.system,
