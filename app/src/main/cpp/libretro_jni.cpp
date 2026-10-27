@@ -2,8 +2,10 @@
 #include <android/log.h>
 #include <dlfcn.h>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <limits>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -27,6 +29,12 @@ void* core = nullptr;
 bool initialized = false;
 bool game_loaded = false;
 std::vector<uint8_t> rom_data;
+std::mutex video_mutex;
+std::vector<uint32_t> video_pixels;
+unsigned video_width = 0;
+unsigned video_height = 0;
+unsigned pixel_format = 0;
+constexpr unsigned kMaxVideoDimension = 1024;
 
 using SetEnvironment = void (*)(retro_environment_t);
 using SetVideo = void (*)(retro_video_refresh_t);
@@ -56,14 +64,78 @@ GetAvInfo get_av_info = nullptr;
 bool environment(unsigned command, void* data) {
     // RETRO_ENVIRONMENT_SET_PIXEL_FORMAT = 10.
     if (command == 10 && data) {
-        const auto format = *static_cast<PixelFormat*>(data);
-        return format.format == 0 || format.format == 1 || format.format == 2;
+        const auto requested = *static_cast<PixelFormat*>(data);
+        if (requested.format != 0 && requested.format != 1 && requested.format != 2) {
+            return false;
+        }
+        std::lock_guard<std::mutex> lock(video_mutex);
+        pixel_format = requested.format;
+        return true;
     }
     return false;
 }
 
-// Playback pipelines are intentionally placeholders until video/audio/input are connected.
-void video_refresh(const void*, unsigned, unsigned, size_t) {}
+// Video frames are converted to Android-friendly opaque ARGB_8888 pixels.
+// Libretro permits null data to mean "reuse the previous frame"; in that case
+// the last valid frame is deliberately retained.
+void video_refresh(const void* data, unsigned width, unsigned height, size_t pitch) {
+    if (!data || width == 0 || height == 0 ||
+        width > kMaxVideoDimension || height > kMaxVideoDimension ||
+        static_cast<size_t>(width) > std::numeric_limits<size_t>::max() / 4) {
+        return;
+    }
+
+    unsigned format;
+    {
+        std::lock_guard<std::mutex> lock(video_mutex);
+        format = pixel_format;
+    }
+    const size_t bytes_per_pixel = format == 1 ? 4u : 2u;
+    const size_t row_bytes = static_cast<size_t>(width) * bytes_per_pixel;
+    if (pitch < row_bytes || static_cast<size_t>(height) >
+            std::numeric_limits<size_t>::max() / static_cast<size_t>(width)) {
+        return;
+    }
+
+    try {
+        std::vector<uint32_t> converted(static_cast<size_t>(width) * height);
+        const auto* source = static_cast<const uint8_t*>(data);
+        for (unsigned y = 0; y < height; ++y) {
+            const uint8_t* row = source + static_cast<size_t>(y) * pitch;
+            for (unsigned x = 0; x < width; ++x) {
+                uint32_t red, green, blue;
+                if (format == 1) {
+                    uint32_t value;
+                    std::memcpy(&value, row + static_cast<size_t>(x) * 4u, sizeof(value));
+                    red = (value >> 16u) & 0xffu;
+                    green = (value >> 8u) & 0xffu;
+                    blue = value & 0xffu;
+                } else {
+                    uint16_t value;
+                    std::memcpy(&value, row + static_cast<size_t>(x) * 2u, sizeof(value));
+                    if (format == 0) { // RETRO_PIXEL_FORMAT_0RGB1555
+                        red = ((value >> 10u) & 0x1fu) * 255u / 31u;
+                        green = ((value >> 5u) & 0x1fu) * 255u / 31u;
+                        blue = (value & 0x1fu) * 255u / 31u;
+                    } else { // RETRO_PIXEL_FORMAT_RGB565
+                        red = ((value >> 11u) & 0x1fu) * 255u / 31u;
+                        green = ((value >> 5u) & 0x3fu) * 255u / 63u;
+                        blue = (value & 0x1fu) * 255u / 31u;
+                    }
+                }
+                converted[static_cast<size_t>(y) * width + x] =
+                    0xff000000u | (red << 16u) | (green << 8u) | blue;
+            }
+        }
+
+        std::lock_guard<std::mutex> lock(video_mutex);
+        video_pixels.swap(converted);
+        video_width = width;
+        video_height = height;
+    } catch (...) {
+        // Never allow allocation/conversion failures to unwind through a core callback.
+    }
+}
 void audio_sample(int16_t, int16_t) {}
 size_t audio_sample_batch(const int16_t*, size_t frames) { return frames; }
 void input_poll() {}
@@ -99,6 +171,13 @@ void close_core() {
     if (core) dlclose(core);
     core = nullptr;
     rom_data.clear();
+    {
+        std::lock_guard<std::mutex> lock(video_mutex);
+        video_pixels.clear();
+        video_width = 0;
+        video_height = 0;
+        pixel_format = 0;
+    }
     reset_symbols();
 }
 }
@@ -204,4 +283,34 @@ Java_com_example_emulator_LibretroNative_nativeRunFrame(JNIEnv*, jobject) {
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_emulator_LibretroNative_nativeClose(JNIEnv*, jobject) {
     close_core();
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_example_emulator_LibretroNative_nativeVideoFrameInfo(JNIEnv* env, jobject) {
+    std::lock_guard<std::mutex> lock(video_mutex);
+    if (video_width == 0 || video_height == 0) return nullptr;
+    jint dimensions[2] = {static_cast<jint>(video_width), static_cast<jint>(video_height)};
+    jintArray result = env->NewIntArray(2);
+    if (result) env->SetIntArrayRegion(result, 0, 2, dimensions);
+    return result;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_example_emulator_LibretroNative_nativeCopyVideoFrame(JNIEnv* env, jobject, jintArray destination) {
+    if (!destination) return JNI_FALSE;
+    std::vector<jint> snapshot;
+    {
+        std::lock_guard<std::mutex> lock(video_mutex);
+        if (video_pixels.empty() || env->GetArrayLength(destination) <
+                static_cast<jsize>(video_pixels.size())) {
+            return JNI_FALSE;
+        }
+        try {
+            snapshot.assign(video_pixels.begin(), video_pixels.end());
+        } catch (...) {
+            return JNI_FALSE;
+        }
+    }
+    env->SetIntArrayRegion(destination, 0, static_cast<jsize>(snapshot.size()), snapshot.data());
+    return env->ExceptionCheck() ? JNI_FALSE : JNI_TRUE;
 }
