@@ -37,7 +37,7 @@ internal class LibretroAudioOutput(
 
         var createdTrack: AudioTrack? = null
         return try {
-            createdTrack = AudioTrack.Builder()
+            val builtTrack = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_GAME)
@@ -54,13 +54,14 @@ internal class LibretroAudioOutput(
                 .setBufferSizeInBytes(maxOf(minBufferSize, sampleRate / 5 * 4))
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
+            createdTrack = builtTrack
 
-            if (createdTrack.state != AudioTrack.STATE_INITIALIZED) {
-                createdTrack.release()
+            if (builtTrack.state != AudioTrack.STATE_INITIALIZED) {
+                builtTrack.release()
                 return false
             }
 
-            val activeTrack = createdTrack
+            val activeTrack = builtTrack
             track = activeTrack
             activeTrack.play()
             worker = scope.launch {
