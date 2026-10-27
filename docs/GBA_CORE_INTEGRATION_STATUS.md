@@ -16,9 +16,14 @@ emulation path is developed and tested.
   loads a ROM, and can call the native frame runner.
 - `libretro_jni.cpp` dynamically resolves the expected Libretro API symbols
   and calls `retro_run()`.
-- The current native video callback discards every frame. The audio callbacks
-  emit no sound, and input callbacks report no buttons. Consequently the
-  present JNI bridge is a loader/runtime skeleton, not a playable emulator.
+- The native video callback now validates frame dimensions and pitch, converts
+  Libretro 0RGB1555, XRGB8888, and RGB565 frames to bounded ARGB pixels, and
+  retains the last frame when a core submits a null duplicate frame.
+- `LibretroNative` exposes frame dimensions/pixel copying, and
+  `LibretroRuntime.readVideoFrame()` can return the latest frame as an Android
+  bitmap. This capture path is not yet wired into `EmulatorScreen`'s renderer.
+- The audio callbacks still emit no sound and input callbacks still report no
+  buttons. The frontend is therefore not a playable emulator yet.
 - A successful `retro_load_game()` only confirms that the core accepted the
   ROM. It does not confirm that the frontend can present frames or route input
   and audio.
@@ -28,9 +33,8 @@ emulation path is developed and tested.
 1. Select a maintained, compatible GBA core and document its license and build
    process. Build from source for supported Android ABIs; do not assume a
    prebuilt library exists just because its filename appears in the catalog.
-2. Connect Libretro video refresh callbacks to a safe, bounded frame buffer
-   and the Android rendering path, handling pixel format, pitch, dimensions,
-   duplicate/null frames, and lifecycle/threading.
+2. Route the new bounded video-frame capture path into the existing Android
+   renderer, including frame-loop scheduling and lifecycle/threading checks.
 3. Route audio samples through an Android audio output path with bounded
    buffering and correct sample-rate handling.
 4. Map the app's controller/touch input to Libretro joypad state, including
@@ -46,6 +50,7 @@ emulation path is developed and tested.
 - [ ] Maintained GBA core source, version/commit, and license recorded
 - [ ] Core built for each packaged Android ABI
 - [ ] Homebrew ROM loads and advances frames on-device
+- [x] Native video callback captures bounded ARGB frames and exposes them to Kotlin
 - [ ] Real core video is visible in the app
 - [ ] Audio output is audible and stable
 - [ ] Touch/controller input changes gameplay and releases correctly
@@ -55,6 +60,9 @@ emulation path is developed and tested.
 
 ## Current validation status
 
-The existing CI run previously reached the Android debug APK build step after
-the Firebase configuration checks passed. That run's final result has not yet
-been confirmed in this audit. Device-level GBA playback has not been verified.
+Native frame capture and Kotlin bitmap conversion have been committed on this
+branch. The broader integration branch's Android APK workflow is currently
+running after its runtime lifecycle fix; that result does not validate this
+branch's native changes. No GBA core binary is packaged, audio/input callbacks
+remain placeholders, the captured frame is not yet connected to the app screen,
+and device-level GBA playback has not been verified.
