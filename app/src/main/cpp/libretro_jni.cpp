@@ -3,6 +3,8 @@
 #include <dlfcn.h>
 #include <cstdint>
 #include <atomic>
+#include <array>
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -36,6 +38,29 @@ unsigned video_width = 0;
 unsigned video_height = 0;
 unsigned pixel_format = 0;
 std::atomic<uint16_t> joypad_mask{0};
+constexpr size_t kAudioCapacityFrames = 16384;
+std::array<int16_t, kAudioCapacityFrames * 2> audio_ring{};
+size_t audio_read_frame = 0;
+size_t audio_write_frame = 0;
+size_t audio_queued_frames = 0;
+std::mutex audio_mutex;
+double audio_sample_rate = 0.0;
+
+void enqueue_audio(const int16_t* samples, size_t frames) {
+    if (!samples) return;
+    std::lock_guard<std::mutex> lock(audio_mutex);
+    for (size_t frame = 0; frame < frames; ++frame) {
+        if (audio_queued_frames == kAudioCapacityFrames) {
+            audio_read_frame = (audio_read_frame + 1) % kAudioCapacityFrames;
+            --audio_queued_frames; // Drop oldest samples to keep latency bounded.
+        }
+        const size_t dst = audio_write_frame * 2;
+        audio_ring[dst] = samples[frame * 2];
+        audio_ring[dst + 1] = samples[frame * 2 + 1];
+        audio_write_frame = (audio_write_frame + 1) % kAudioCapacityFrames;
+        ++audio_queued_frames;
+    }
+}
 constexpr unsigned kMaxVideoDimension = 1024;
 
 using SetEnvironment = void (*)(retro_environment_t);
@@ -138,8 +163,14 @@ void video_refresh(const void* data, unsigned width, unsigned height, size_t pit
         // Never allow allocation/conversion failures to unwind through a core callback.
     }
 }
-void audio_sample(int16_t, int16_t) {}
-size_t audio_sample_batch(const int16_t*, size_t frames) { return frames; }
+void audio_sample(int16_t left, int16_t right) {
+    const int16_t samples[2] = {left, right};
+    enqueue_audio(samples, 1);
+}
+size_t audio_sample_batch(const int16_t* samples, size_t frames) {
+    enqueue_audio(samples, frames);
+    return samples ? frames : 0;
+}
 void input_poll() {}
 int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
     // RETRO_DEVICE_JOYPAD = 1; the standard joypad IDs occupy bits 0..15.
@@ -184,6 +215,13 @@ void close_core() {
         video_height = 0;
         pixel_format = 0;
         joypad_mask.store(0, std::memory_order_relaxed);
+    }
+    {
+        std::lock_guard<std::mutex> lock(audio_mutex);
+        audio_read_frame = 0;
+        audio_write_frame = 0;
+        audio_queued_frames = 0;
+        audio_sample_rate = 0.0;
     }
     reset_symbols();
 }
@@ -277,6 +315,10 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
     game_loaded = true;
     AvInfo av_info{};
     get_av_info(&av_info);
+    {
+        std::lock_guard<std::mutex> lock(audio_mutex);
+        audio_sample_rate = av_info.sample_rate;
+    }
     return nullptr;
 }
 
@@ -325,4 +367,39 @@ Java_com_example_emulator_LibretroNative_nativeCopyVideoFrame(JNIEnv* env, jobje
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_emulator_LibretroNative_nativeSetJoypadState(JNIEnv*, jobject, jint mask) {
     joypad_mask.store(static_cast<uint16_t>(mask & 0xffff), std::memory_order_relaxed);
+}
+
+extern "C" JNIEXPORT jdouble JNICALL
+Java_com_example_emulator_LibretroNative_nativeGetAudioSampleRate(JNIEnv*, jobject) {
+    std::lock_guard<std::mutex> lock(audio_mutex);
+    return static_cast<jdouble>(audio_sample_rate);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_example_emulator_LibretroNative_nativeReadAudio(JNIEnv* env, jobject, jshortArray destination) {
+    if (!destination) return 0;
+    const jsize capacity = env->GetArrayLength(destination);
+    if (capacity < 2) return 0;
+    std::vector<jshort> samples;
+    {
+        std::lock_guard<std::mutex> lock(audio_mutex);
+        const size_t requested_frames = static_cast<size_t>(capacity / 2);
+        const size_t frames = std::min(audio_queued_frames, requested_frames);
+        try {
+            samples.resize(frames * 2);
+        } catch (...) {
+            return 0;
+        }
+        for (size_t frame = 0; frame < frames; ++frame) {
+            const size_t src = audio_read_frame * 2;
+            samples[frame * 2] = audio_ring[src];
+            samples[frame * 2 + 1] = audio_ring[src + 1];
+            audio_read_frame = (audio_read_frame + 1) % kAudioCapacityFrames;
+        }
+        audio_queued_frames -= frames;
+    }
+    if (samples.empty()) return 0;
+    env->SetShortArrayRegion(destination, 0, static_cast<jsize>(samples.size()), samples.data());
+    if (env->ExceptionCheck()) return 0;
+    return static_cast<jint>(samples.size());
 }
