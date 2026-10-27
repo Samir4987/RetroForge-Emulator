@@ -56,18 +56,27 @@ class LibretroRuntime(
             audioOutput?.close()
             audioOutput = null
             val bridge = native ?: LibretroNative().also { native = it }
-            val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
-            if (error != null) {
-                bridge.nativeClose()
-                state = State.READY
-                throw IllegalStateException(error)
-            }
-            state = State.GAME_LOADED
-            val output = LibretroAudioOutput(this)
-            if (output.start(bridge.nativeGetAudioSampleRate().toInt())) {
-                audioOutput = output
-            } else {
-                output.close()
+            try {
+                val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
+                if (error != null) throw IllegalStateException(error)
+                state = State.GAME_LOADED
+                val output = LibretroAudioOutput(this)
+                if (output.start(bridge.nativeGetAudioSampleRate().toInt())) {
+                    audioOutput = output
+                } else {
+                    output.close()
+                }
+            } catch (failure: Throwable) {
+                audioOutput?.close()
+                audioOutput = null
+                runCatching { bridge.nativeClose() }
+                native = null
+                state = if (frontendLibrary.isFile && coreFile.isFile) {
+                    State.READY
+                } else {
+                    State.UNAVAILABLE
+                }
+                throw failure
             }
         }
     }
