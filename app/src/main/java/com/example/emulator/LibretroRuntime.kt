@@ -68,6 +68,12 @@ class LibretroRuntime(
         check(native?.nativeRunFrame() == true) { "Native Libretro core is not running." }
     }
 
+    /** Updates standard Libretro joypad buttons for player one. */
+    fun updateInput(input: EmulatorInputState) {
+        if (state != State.GAME_LOADED) return
+        native?.nativeSetJoypadState(input.toLibretroJoypadMask())
+    }
+
     /**
      * Copies the most recent core frame into an Android ARGB_8888 bitmap.
      * Returns null until the core has submitted a valid frame.
@@ -95,4 +101,27 @@ class LibretroRuntime(
         native = null
         state = State.CLOSED
     }
+}
+
+
+/** Maps RetroForge's touch/controller state to standard Libretro joypad IDs. */
+internal fun EmulatorInputState.toLibretroJoypadMask(): Int {
+    var mask = 0
+    fun set(id: Int, pressed: Boolean) {
+        if (pressed) mask = mask or (1 shl id)
+    }
+
+    set(0, buttonB)
+    set(1, buttonY)
+    set(2, select)
+    set(3, start)
+    set(4, dpadUp)
+    set(5, dpadDown)
+    set(6, dpadLeft)
+    set(7, dpadRight)
+    set(8, buttonA)
+    set(9, buttonX)
+    set(10, triggerL)
+    set(11, triggerR)
+    return mask
 }
