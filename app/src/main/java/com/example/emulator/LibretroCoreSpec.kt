@@ -30,8 +30,8 @@ data class LibretroCoreSpec(
             ),
             LibretroCoreSpec(
                 system = RetroSystem.GBA,
-                libraryFileName = "skyemu_libretro_android.so",
-                upstreamUrl = "https://github.com/libretro/SkyEmu",
+                libraryFileName = "mgba_libretro_android.so",
+                upstreamUrl = "https://github.com/libretro/mgba",
                 extensions = setOf("gba")
             ),
             LibretroCoreSpec(
