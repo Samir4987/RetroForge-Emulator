@@ -8,6 +8,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -66,13 +68,21 @@ internal class LibretroAudioOutput(
                 while (isActive) {
                     val count = runtime.readAudioSamples(samples)
                     if (count > 0) {
-                        val written = activeTrack.write(
-                            samples,
-                            0,
-                            count,
-                            AudioTrack.WRITE_BLOCKING
-                        )
-                        if (written < 0) delay(4)
+                        var offset = 0
+                        while (offset < count && isActive) {
+                            val written = activeTrack.write(
+                                samples,
+                                offset,
+                                count - offset,
+                                AudioTrack.WRITE_BLOCKING
+                            )
+                            if (written > 0) {
+                                offset += written
+                            } else {
+                                delay(4)
+                                break
+                            }
+                        }
                     } else {
                         delay(2)
                     }
@@ -87,15 +97,15 @@ internal class LibretroAudioOutput(
     }
 
     fun close() {
+        val activeTrack = track
         worker?.cancel()
+        runCatching { activeTrack?.pause() }
+        runCatching { activeTrack?.flush() }
+        runCatching { activeTrack?.stop() }
+        runBlocking { worker?.cancelAndJoin() }
         worker = null
         scope.cancel()
-        track?.let { activeTrack ->
-            runCatching { activeTrack.pause() }
-            runCatching { activeTrack.flush() }
-            runCatching { activeTrack.stop() }
-            runCatching { activeTrack.release() }
-        }
+        runCatching { activeTrack?.release() }
         track = null
     }
 }
