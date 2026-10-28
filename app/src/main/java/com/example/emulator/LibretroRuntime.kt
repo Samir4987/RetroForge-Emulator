@@ -21,6 +21,7 @@ class LibretroRuntime(
     // Reuse the pixel array to reduce per-frame allocation. A fresh Bitmap is still
     // returned per frame so Compose observes a new state value and rendering never
     // races with mutation of a Bitmap currently being drawn.
+    private var videoPixelBuffer: IntArray? = null
 
     private val coreFile: File
         get() = File(frontendLibrary.parentFile, coreSpec.libraryFileName)
