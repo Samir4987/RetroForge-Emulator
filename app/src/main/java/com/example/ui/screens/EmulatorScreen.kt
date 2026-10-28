@@ -62,9 +62,11 @@ import com.example.ui.components.VirtualController
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.example.data.local.RomLibraryRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.isActive
 import java.io.File
 
@@ -148,10 +150,16 @@ fun EmulatorScreen(
                 val activeRuntime = runtime
                 if (!emulatorCore.isPaused) {
                     if (activeRuntime != null) {
-                        activeRuntime.updateInput(emulatorCore.inputState)
-                        val result = activeRuntime.runFrame()
-                        if (result.isSuccess) {
-                            activeRuntime.readVideoFrame()?.let { libretroBitmap = it }
+                        // A core frame can do substantial native work. Keep it off the
+                        // Compose/UI thread, then publish the resulting Bitmap on main.
+                        val inputSnapshot = emulatorCore.inputState.copy()
+                        val frame = withContext(Dispatchers.Default) {
+                            activeRuntime.updateInput(inputSnapshot)
+                            val result = activeRuntime.runFrame()
+                            result to if (result.isSuccess) activeRuntime.readVideoFrame() else null
+                        }
+                        if (frame.first.isSuccess) {
+                            frame.second?.let { libretroBitmap = it }
                         } else {
                             activeRuntime.close()
                             runtime = null
