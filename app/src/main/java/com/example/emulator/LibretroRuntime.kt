@@ -17,6 +17,12 @@ class LibretroRuntime(
 
     @Volatile private var native: LibretroNative? = null
     private var audioOutput: LibretroAudioOutput? = null
+
+    // Reuse the pixel array to reduce per-frame allocation. A fresh Bitmap is still
+    // returned per frame so Compose observes a new state value and rendering never
+    // races with mutation of a Bitmap currently being drawn.
+    private var videoPixelBuffer: IntArray? = null
+
     private val coreFile: File
         get() = File(frontendLibrary.parentFile, coreSpec.libraryFileName)
 
@@ -55,6 +61,7 @@ class LibretroRuntime(
         return runCatching {
             audioOutput?.close()
             audioOutput = null
+            videoPixelBuffer = null
             val bridge = native ?: LibretroNative().also { native = it }
             try {
                 val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
@@ -114,7 +121,10 @@ class LibretroRuntime(
         val count = width.toLong() * height.toLong()
         if (count > Int.MAX_VALUE) return null
 
-        val pixels = IntArray(count.toInt())
+        val pixelCount = count.toInt()
+        val pixels = videoPixelBuffer
+            ?.takeIf { it.size == pixelCount }
+            ?: IntArray(pixelCount).also { videoPixelBuffer = it }
         if (!bridge.nativeCopyVideoFrame(pixels)) return null
         return runCatching {
             Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
@@ -126,6 +136,7 @@ class LibretroRuntime(
         audioOutput = null
         native?.nativeClose()
         native = null
+        videoPixelBuffer = null
         state = State.CLOSED
     }
 }
