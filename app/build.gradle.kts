@@ -12,6 +12,7 @@ plugins {
 android {
     namespace = "com.example"
     compileSdk = 36
+    ndkVersion = "27.2.12479018"
 
     defaultConfig {
         applicationId = "com.aistudio.retroforge.gkqwnx"
@@ -34,6 +35,14 @@ android {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
+        }
+    }
+
+    // The frontend opens the core by absolute path from nativeLibraryDir.
+    // Extract packaged JNI libraries so dlopen can resolve the core reliably.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 
