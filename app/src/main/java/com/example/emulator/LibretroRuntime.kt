@@ -18,10 +18,9 @@ class LibretroRuntime(
     @Volatile private var native: LibretroNative? = null
     private var audioOutput: LibretroAudioOutput? = null
 
-    // Reuse the frame buffer and Bitmap so a 60 FPS game does not allocate a new
-    // pixel array and Android Bitmap on every frame.
-    private var videoPixelBuffer: IntArray? = null
-    private var videoBitmap: Bitmap? = null
+    // Reuse the pixel array to reduce per-frame allocation. A fresh Bitmap is still
+    // returned per frame so Compose observes a new state value and rendering never
+    // races with mutation of a Bitmap currently being drawn.
 
     private val coreFile: File
         get() = File(frontendLibrary.parentFile, coreSpec.libraryFileName)
@@ -62,7 +61,6 @@ class LibretroRuntime(
             audioOutput?.close()
             audioOutput = null
             videoPixelBuffer = null
-            videoBitmap = null
             val bridge = native ?: LibretroNative().also { native = it }
             try {
                 val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
@@ -125,19 +123,11 @@ class LibretroRuntime(
         val pixelCount = count.toInt()
         val pixels = videoPixelBuffer
             ?.takeIf { it.size == pixelCount }
-            ?: IntArray(pixelCount).also {
-                videoPixelBuffer = it
-                videoBitmap = null
-            }
+            ?: IntArray(pixelCount).also { videoPixelBuffer = it }
         if (!bridge.nativeCopyVideoFrame(pixels)) return null
-
-        val bitmap = videoBitmap
-            ?.takeIf { it.width == width && it.height == height }
-            ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
-                videoBitmap = it
-            }
-        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
-        return bitmap
+        return runCatching {
+            Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+        }.getOrNull()
     }
 
     fun close() {
@@ -146,7 +136,6 @@ class LibretroRuntime(
         native?.nativeClose()
         native = null
         videoPixelBuffer = null
-        videoBitmap = null
         state = State.CLOSED
     }
 }
