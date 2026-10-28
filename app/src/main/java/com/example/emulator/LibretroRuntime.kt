@@ -17,6 +17,12 @@ class LibretroRuntime(
 
     @Volatile private var native: LibretroNative? = null
     private var audioOutput: LibretroAudioOutput? = null
+
+    // Reuse the frame buffer and Bitmap so a 60 FPS game does not allocate a new
+    // pixel array and Android Bitmap on every frame.
+    private var videoPixelBuffer: IntArray? = null
+    private var videoBitmap: Bitmap? = null
+
     private val coreFile: File
         get() = File(frontendLibrary.parentFile, coreSpec.libraryFileName)
 
@@ -55,6 +61,8 @@ class LibretroRuntime(
         return runCatching {
             audioOutput?.close()
             audioOutput = null
+            videoPixelBuffer = null
+            videoBitmap = null
             val bridge = native ?: LibretroNative().also { native = it }
             try {
                 val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
@@ -114,11 +122,22 @@ class LibretroRuntime(
         val count = width.toLong() * height.toLong()
         if (count > Int.MAX_VALUE) return null
 
-        val pixels = IntArray(count.toInt())
+        val pixelCount = count.toInt()
+        val pixels = videoPixelBuffer
+            ?.takeIf { it.size == pixelCount }
+            ?: IntArray(pixelCount).also {
+                videoPixelBuffer = it
+                videoBitmap = null
+            }
         if (!bridge.nativeCopyVideoFrame(pixels)) return null
-        return runCatching {
-            Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
-        }.getOrNull()
+
+        val bitmap = videoBitmap
+            ?.takeIf { it.width == width && it.height == height }
+            ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
+                videoBitmap = it
+            }
+        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+        return bitmap
     }
 
     fun close() {
@@ -126,6 +145,8 @@ class LibretroRuntime(
         audioOutput = null
         native?.nativeClose()
         native = null
+        videoPixelBuffer = null
+        videoBitmap = null
         state = State.CLOSED
     }
 }
