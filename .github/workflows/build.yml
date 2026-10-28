@@ -4,7 +4,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main, master, feature/gba-core-integration]
   pull_request:
 
 permissions:
@@ -149,6 +149,12 @@ jobs:
           grep -R -n "default_web_client_id" \
             app/build/generated/res/google-services \
             2>/dev/null || true
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./gradlew --no-daemon :app:testDebugUnitTest
 
       - name: Build debug APK
         shell: bash
