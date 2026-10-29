@@ -60,7 +60,7 @@ enum class RetroSystem(
         defaultAspect = 256f / 192f,
         isDualScreen = true,
         hasAnalogStick = false,
-        supportedExtensions = listOf("nds", "ds")
+        supportedExtensions = listOf("nds", "ds", "dsi", "srl")
     ),
     N3DS(
         code = "N3DS",
