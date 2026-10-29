@@ -38,7 +38,7 @@ data class LibretroCoreSpec(
                 system = RetroSystem.NDS,
                 libraryFileName = "melondsds_libretro_android.so",
                 upstreamUrl = "https://git.libretro.com/libretro/melonds-ds",
-                extensions = setOf("nds", "dsi", "srl")
+                extensions = setOf("nds", "ds", "dsi", "srl")
             ),
             LibretroCoreSpec(
                 system = RetroSystem.N64,
