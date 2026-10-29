@@ -243,7 +243,8 @@ void close_core(JNIEnv* env = nullptr) {
     initialized = false;
     if (core) dlclose(core);
     core = nullptr;
-    rom_data.clear(); pending_audio.clear();
+    rom_data.clear(); pending_audio.clear(); core_options.clear();
+    current_pixel_format = 1; joypad_mask = 0; pointer_x = 0.5f; pointer_y = 0.5f; pointer_pressed = false;
     if (env && java_bridge) env->DeleteWeakGlobalRef(java_bridge);
     java_bridge=nullptr; video_callback=nullptr; audio_callback=nullptr;
     reset_symbols();
