@@ -33,6 +33,7 @@ class EmulatorCore(
 
     var isPaused = false
     var isRewinding = false
+    var externalCoreActive = false
     var fastForwardMultiplier = 1.0f // 1x, 1.5x, 2x, 4x, 8x
     var frameCounter = 0L
     var playTimeSeconds = 0L
@@ -71,6 +72,7 @@ class EmulatorCore(
     }
 
     fun loadGame(game: RetroGame) {
+        externalCoreActive = false
         currentGame = game
         currentSystem = RetroSystem.fromCode(game.system)
         recreateBuffers()
@@ -113,8 +115,21 @@ class EmulatorCore(
         shieldCharge = 100
     }
 
+    /** Replace the placeholder renderer with frames delivered by a real native core. */
+    fun updateExternalFrame(top: Bitmap, bottom: Bitmap?) {
+        screenBitmap = top
+        bottomScreenBitmap = bottom
+        externalCoreActive = true
+        frameCounter++
+        if (frameCounter % 60L == 0L) playTimeSeconds++
+    }
+
+    fun stopExternalCore() {
+        externalCoreActive = false
+    }
+
     fun tick() {
-        if (isPaused) return
+        if (isPaused || externalCoreActive) return
 
         if (isRewinding) {
             val pastFrame = rewindBuffer.pop()
