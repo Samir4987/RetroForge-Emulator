@@ -4,6 +4,9 @@ import android.widget.Toast
 import android.util.Base64
 import java.io.File
 import androidx.activity.compose.BackHandler
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -78,6 +81,7 @@ fun EmulatorScreen(
     onBackToLibrary: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
 
     var activeSkin by remember { mutableStateOf(initialSkin) }
@@ -90,6 +94,27 @@ fun EmulatorScreen(
     val saveStates = remember { mutableStateListOf<SaveStateDto>() }
     var ndsRuntime by remember { mutableStateOf<LibretroRuntime?>(null) }
     var ndsStatus by remember { mutableStateOf<String?>(null) }
+    var wasRunningBeforeBackground by remember { mutableStateOf(false) }
+
+    DisposableEffect(lifecycleOwner, ndsRuntime) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    wasRunningBeforeBackground = !emulatorCore.isPaused
+                    if (wasRunningBeforeBackground) emulatorCore.isPaused = true
+                    ndsRuntime?.setPaused(true)
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    if (wasRunningBeforeBackground) emulatorCore.isPaused = false
+                    wasRunningBeforeBackground = false
+                    ndsRuntime?.setPaused(emulatorCore.isPaused)
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     DisposableEffect(ndsRuntime) {
         onDispose {
