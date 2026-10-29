@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstring>
 #include <algorithm>
+#include <cctype>
+#include <unordered_map>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -38,6 +40,11 @@ unsigned joypad_mask = 0;
 float pointer_x = 0.5f, pointer_y = 0.5f;
 bool pointer_pressed = false;
 std::vector<int16_t> pending_audio;
+std::string system_directory;
+std::string save_directory;
+std::string assets_directory;
+std::unordered_map<std::string, std::string> core_options;
+struct CoreVariable { const char* key; const char* value; };
 using SerializeSize = size_t (*)();
 using Serialize = bool (*)(void*, size_t);
 using Unserialize = bool (*)(const void*, size_t);
@@ -83,6 +90,51 @@ JNIEnv* callback_env(bool& attached) {
 void detach_callback(bool attached) { if (attached && java_vm) java_vm->DetachCurrentThread(); }
 
 bool environment(unsigned command, void* data) {
+    // RETRO_ENVIRONMENT_GET_CAN_DUPE
+    if (command == 3 && data) { *static_cast<bool*>(data) = true; return true; }
+    // RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY
+    if (command == 9 && data && !system_directory.empty()) {
+        *static_cast<const char**>(data) = system_directory.c_str(); return true;
+    }
+    // RETRO_ENVIRONMENT_GET_VARIABLE
+    if (command == 15 && data) {
+        auto* variable = static_cast<CoreVariable*>(data);
+        auto it = variable->key ? core_options.find(variable->key) : core_options.end();
+        if (it == core_options.end()) { variable->value = nullptr; return false; }
+        variable->value = it->second.c_str(); return true;
+    }
+    // RETRO_ENVIRONMENT_SET_VARIABLES
+    if (command == 16 && data) {
+        auto* variables = static_cast<CoreVariable*>(data);
+        for (auto* item = variables; item && item->key; ++item) {
+            const std::string raw = item->value ? item->value : "";
+            const auto separator = raw.find(';');
+            if (separator == std::string::npos) continue;
+            std::string choices = raw.substr(separator + 1);
+            const auto first = choices.find('|');
+            std::string value = choices.substr(0, first);
+            const auto begin = value.find_first_not_of(" \\t");
+            const auto end = value.find_last_not_of(" \\t");
+            value = begin == std::string::npos ? "" : value.substr(begin, end - begin + 1);
+            core_options[item->key] = value;
+        }
+        return true;
+    }
+    // RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE
+    if (command == 17 && data) { *static_cast<bool*>(data) = false; return true; }
+    // RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME
+    if (command == 18) return true;
+    // RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY
+    if (command == 30 && data && !assets_directory.empty()) {
+        *static_cast<const char**>(data) = assets_directory.c_str(); return true;
+    }
+    // RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY
+    if (command == 31 && data && !save_directory.empty()) {
+        *static_cast<const char**>(data) = save_directory.c_str(); return true;
+    }
+    // RETRO_ENVIRONMENT_GET_INPUT_BITMASKS
+    if (command == 51 && data) { *static_cast<bool*>(data) = true; return true; }
+    // RETRO_ENVIRONMENT_SET_PIXEL_FORMAT
     if (command == 10 && data) {
         unsigned format = static_cast<PixelFormat*>(data)->format;
         if (format > 2) return false;
@@ -201,6 +253,22 @@ void close_core(JNIEnv* env = nullptr) {
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
     java_vm = vm;
     return JNI_VERSION_1_6;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_emulator_LibretroNative_nativeSetDirectories(
+        JNIEnv* env, jobject, jstring system_path, jstring save_path, jstring assets_path) {
+    auto read_path = [env](jstring value) -> std::string {
+        if (!value) return {};
+        const char* chars = env->GetStringUTFChars(value, nullptr);
+        if (!chars) return {};
+        std::string result(chars);
+        env->ReleaseStringUTFChars(value, chars);
+        return result;
+    };
+    system_directory = read_path(system_path);
+    save_directory = read_path(save_path);
+    assets_directory = read_path(assets_path);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
