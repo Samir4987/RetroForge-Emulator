@@ -50,6 +50,7 @@ fun RetroScreenView(
     fastForwardMultiplier: Float = 1.0f,
     isPaused: Boolean = false,
     enableScanlines: Boolean = true,
+    frameVersion: Long = 0L,
     onTouchInput: ((x: Float, y: Float, isTouching: Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -78,7 +79,8 @@ fun RetroScreenView(
                 ) {
                     ScreenCanvas(
                         bitmap = screenBitmap,
-                        enableScanlines = enableScanlines
+                        enableScanlines = enableScanlines,
+                        frameVersion = frameVersion
                     )
                     ScreenHudOverlay(
                         isRewinding = isRewinding,
@@ -139,7 +141,8 @@ fun RetroScreenView(
                 ) {
                     ScreenCanvas(
                         bitmap = bottomScreenBitmap,
-                        enableScanlines = enableScanlines
+                        enableScanlines = enableScanlines,
+                        frameVersion = frameVersion
                     )
                     Text(
                         text = "TOUCH SCREEN",
@@ -165,7 +168,8 @@ fun RetroScreenView(
             ) {
                 ScreenCanvas(
                     bitmap = screenBitmap,
-                    enableScanlines = enableScanlines
+                    enableScanlines = enableScanlines,
+                    frameVersion = frameVersion
                 )
                 ScreenHudOverlay(
                     isRewinding = isRewinding,
@@ -180,9 +184,10 @@ fun RetroScreenView(
 @Composable
 private fun ScreenCanvas(
     bitmap: Bitmap,
-    enableScanlines: Boolean
+    enableScanlines: Boolean,
+    frameVersion: Long
 ) {
-    val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
+    val imageBitmap = remember(bitmap, frameVersion) { bitmap.asImageBitmap() }
 
     Canvas(
         modifier = Modifier
