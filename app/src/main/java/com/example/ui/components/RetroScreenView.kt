@@ -97,12 +97,12 @@ fun RetroScreenView(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Bottom Touch Screen
+                // Bottom Touch Screen. The 3DS bottom panel is 320x240; its top panel is 400x240.
                 var touchPos by remember { mutableStateOf<Offset?>(null) }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.92f)
-                        .aspectRatio(system.defaultAspect)
+                        .aspectRatio(if (system == RetroSystem.N3DS) 4f / 3f else system.defaultAspect)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.Black)
                         .pointerInput(Unit) {
