@@ -339,6 +339,7 @@ fun EmulatorScreen(
                                     saveStateRepository = saveStateRepository,
                                     saveStates = saveStates,
                                     realRuntime = ndsRuntime,
+                                    requireNativeRuntime = emulatorCore.currentSystem == RetroSystem.NDS,
                                     onSaved = {
                                         Toast.makeText(context, "Quick Saved to Slot 1", Toast.LENGTH_SHORT).show()
                                     },
@@ -485,6 +486,7 @@ fun EmulatorScreen(
                         saveStateRepository = saveStateRepository,
                         saveStates = saveStates,
                         realRuntime = ndsRuntime,
+                        requireNativeRuntime = emulatorCore.currentSystem == RetroSystem.NDS,
                         onSaved = {
                             Toast.makeText(context, "State saved to Slot ${slot + 1}", Toast.LENGTH_SHORT).show()
                         },
@@ -494,7 +496,7 @@ fun EmulatorScreen(
                     )
                 },
                 onLoadFromSlot = { dto ->
-                    val success = if (ndsRuntime != null) {
+                    val success = if (emulatorCore.currentSystem == RetroSystem.NDS) {
                         runCatching {
                             ndsRuntime?.loadState(Base64.decode(dto.stateData, Base64.DEFAULT)) == true
                         }.getOrDefault(false)
@@ -527,13 +529,14 @@ private fun saveStateToSlot(
     saveStateRepository: SaveStateRepository?,
     saveStates: MutableList<SaveStateDto>,
     realRuntime: LibretroRuntime? = null,
+    requireNativeRuntime: Boolean = false,
     onSaved: () -> Unit,
     onSaveFailed: () -> Unit = {}
 ) {
-    val stateBase64 = if (realRuntime != null) {
-        realRuntime.saveState()?.let { Base64.encodeToString(it, Base64.NO_WRAP) }.orEmpty()
-    } else {
-        emulatorCore.exportSaveStateBase64()
+    val stateBase64 = when {
+        realRuntime != null -> realRuntime.saveState()?.let { Base64.encodeToString(it, Base64.NO_WRAP) }.orEmpty()
+        requireNativeRuntime -> ""
+        else -> emulatorCore.exportSaveStateBase64()
     }
     if (stateBase64.isBlank()) {
         onSaveFailed()
