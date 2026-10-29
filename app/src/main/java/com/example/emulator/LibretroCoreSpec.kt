@@ -36,9 +36,9 @@ data class LibretroCoreSpec(
             ),
             LibretroCoreSpec(
                 system = RetroSystem.NDS,
-                libraryFileName = "skyemu_libretro_android.so",
-                upstreamUrl = "https://github.com/libretro/SkyEmu",
-                extensions = setOf("nds", "ds")
+                libraryFileName = "melondsds_libretro_android.so",
+                upstreamUrl = "https://git.libretro.com/libretro/melonds-ds",
+                extensions = setOf("nds", "dsi", "srl")
             ),
             LibretroCoreSpec(
                 system = RetroSystem.N64,
