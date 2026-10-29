@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.widget.Toast
 import android.util.Base64
+import android.view.KeyEvent as AndroidKeyEvent
 import java.io.File
 import androidx.activity.compose.BackHandler
 import androidx.lifecycle.Lifecycle
@@ -49,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -224,6 +226,25 @@ fun EmulatorScreen(
             .fillMaxSize()
             .background(Color(0xFF0A0C14))
             .testTag("emulator_screen")
+            .onPreviewKeyEvent { event ->
+                val isDown = event.nativeKeyEvent.action == AndroidKeyEvent.ACTION_DOWN
+                val input = emulatorCore.inputState
+                when (event.nativeKeyEvent.keyCode) {
+                    AndroidKeyEvent.KEYCODE_DPAD_UP -> { input.dpadUp = isDown; true }
+                    AndroidKeyEvent.KEYCODE_DPAD_DOWN -> { input.dpadDown = isDown; true }
+                    AndroidKeyEvent.KEYCODE_DPAD_LEFT -> { input.dpadLeft = isDown; true }
+                    AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> { input.dpadRight = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_A -> { input.buttonA = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_B -> { input.buttonB = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_X -> { input.buttonX = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_Y -> { input.buttonY = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_L1 -> { input.triggerL = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_R1 -> { input.triggerR = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_START -> { input.start = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_SELECT -> { input.select = isDown; true }
+                    else -> false
+                }
+            }
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
