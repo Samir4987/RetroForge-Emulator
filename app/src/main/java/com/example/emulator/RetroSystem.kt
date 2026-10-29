@@ -10,6 +10,8 @@ enum class RetroSystem(
     val defaultAspect: Float,
     val isDualScreen: Boolean = false,
     val hasAnalogStick: Boolean = false,
+    val bottomScreenWidth: Int = screenWidth,
+    val bottomScreenHeight: Int = screenHeight,
     val supportedExtensions: List<String>
 ) {
     GB(
@@ -59,6 +61,20 @@ enum class RetroSystem(
         isDualScreen = true,
         hasAnalogStick = false,
         supportedExtensions = listOf("nds", "ds")
+    ),
+    N3DS(
+        code = "N3DS",
+        displayName = "Nintendo 3DS",
+        releaseYear = 2011,
+        screenWidth = 400,
+        screenHeight = 240,
+        colorDepth = "Dual LCD + capacitive 3D top display",
+        defaultAspect = 400f / 240f,
+        isDualScreen = true,
+        hasAnalogStick = true,
+        bottomScreenWidth = 320,
+        bottomScreenHeight = 240,
+        supportedExtensions = listOf("3ds", "cci", "cxi")
     ),
     N64(
         code = "N64",
