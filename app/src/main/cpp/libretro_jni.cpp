@@ -90,6 +90,8 @@ JNIEnv* callback_env(bool& attached) {
 void detach_callback(bool attached) { if (attached && java_vm) java_vm->DetachCurrentThread(); }
 
 bool environment(unsigned command, void* data) {
+    // Strip Libretro experimental flag so flagged commands match their base IDs.
+    command &= ~0x10000u;
     // RETRO_ENVIRONMENT_GET_CAN_DUPE
     if (command == 3 && data) { *static_cast<bool*>(data) = true; return true; }
     // RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY
