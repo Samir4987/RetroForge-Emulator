@@ -46,6 +46,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -86,6 +89,7 @@ fun EmulatorScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val gamepadFocusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope()
 
     var activeSkin by remember { mutableStateOf(initialSkin) }
@@ -195,6 +199,10 @@ fun EmulatorScreen(
     }
 
     // High performance frame loop
+    LaunchedEffect(Unit) {
+        runCatching { gamepadFocusRequester.requestFocus() }
+    }
+
     var frameTicker by remember { mutableStateOf(0L) }
     LaunchedEffect(ndsRuntime) {
         while (true) {
@@ -226,6 +234,8 @@ fun EmulatorScreen(
             .fillMaxSize()
             .background(Color(0xFF0A0C14))
             .testTag("emulator_screen")
+            .focusRequester(gamepadFocusRequester)
+            .focusable()
             .onPreviewKeyEvent { event ->
                 val isDown = event.nativeKeyEvent.action == AndroidKeyEvent.ACTION_DOWN
                 val input = emulatorCore.inputState
