@@ -12,6 +12,7 @@ plugins {
 android {
     namespace = "com.example"
     compileSdk = 36
+    ndkVersion = "27.2.12479018"
 
     defaultConfig {
         applicationId = "com.aistudio.retroforge.gkqwnx"
@@ -71,6 +72,13 @@ android {
     dependenciesInfo {
         includeInApk = false
         includeInBundle = true
+    }
+
+    // LibretroRuntime loads the packaged core by absolute path from nativeLibraryDir.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
