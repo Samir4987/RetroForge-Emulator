@@ -100,19 +100,27 @@ class LibretroRuntime(
 
     override fun onNativeVideoFrame(argbPixels: ByteArray, width: Int, height: Int) {
         if (width <= 0 || height <= 0 || argbPixels.size != width * height * 4) return
-        val combined = runCatching {
-            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
-                it.copyPixelsFromBuffer(ByteBuffer.wrap(argbPixels))
+        runCatching {
+            val buffer = ByteBuffer.wrap(argbPixels)
+            if (coreSpec.system == RetroSystem.NDS && width == 256 && height >= 384 && height % 2 == 0) {
+                val halfHeight = height / 2
+                val top = screenBitmap?.takeIf { it.width == width && it.height == halfHeight }
+                    ?: Bitmap.createBitmap(width, halfHeight, Bitmap.Config.ARGB_8888)
+                val bottom = bottomScreenBitmap?.takeIf { it.width == width && it.height == halfHeight }
+                    ?: Bitmap.createBitmap(width, halfHeight, Bitmap.Config.ARGB_8888)
+                top.copyPixelsFromBuffer(buffer)
+                bottom.copyPixelsFromBuffer(buffer)
+                screenBitmap = top
+                bottomScreenBitmap = bottom
+            } else {
+                val frame = screenBitmap?.takeIf { it.width == width && it.height == height }
+                    ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                frame.copyPixelsFromBuffer(buffer)
+                screenBitmap = frame
+                bottomScreenBitmap = null
             }
-        }.getOrNull() ?: return
-
-        if (coreSpec.system == RetroSystem.NDS && width == 256 && height >= 384) {
-            val halfHeight = height / 2
-            screenBitmap = Bitmap.createBitmap(combined, 0, 0, width, halfHeight)
-            bottomScreenBitmap = Bitmap.createBitmap(combined, 0, halfHeight, width, height - halfHeight)
-        } else {
-            screenBitmap = combined
-            bottomScreenBitmap = null
+        }.onFailure {
+            return
         }
         onFrame?.invoke(screenBitmap ?: return, bottomScreenBitmap)
     }
