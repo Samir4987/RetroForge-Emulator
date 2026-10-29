@@ -13,6 +13,7 @@ internal interface LibretroCallbacks {
 internal class LibretroNative(
     private val callbacks: LibretroCallbacks
 ) {
+    external fun nativeSetDirectories(systemDirectory: String, saveDirectory: String, assetsDirectory: String)
     external fun nativeOpen(corePath: String, romPath: String): String?
     external fun nativeRunFrame(): Boolean
     external fun nativeSetInputState(
