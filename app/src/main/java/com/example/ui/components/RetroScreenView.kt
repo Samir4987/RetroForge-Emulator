@@ -104,7 +104,7 @@ fun RetroScreenView(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.92f)
-                        .aspectRatio(if (system == RetroSystem.N3DS) 4f / 3f else system.defaultAspect)
+                        .aspectRatio(system.defaultAspect)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.Black)
                         .pointerInput(Unit) {
