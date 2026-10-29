@@ -216,13 +216,20 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject bridge,
     if(!java_bridge||!video_callback||!audio_callback) {
         close_core(env); return env->NewStringUTF("Could not bind Libretro video/audio callbacks.");
     }
-    if (!core_path || !rom_path) return env->NewStringUTF("Core path and ROM path are required.");
+    if (!core_path || !rom_path) {
+        close_core(env);
+        return env->NewStringUTF("Core path and ROM path are required.");
+    }
 
     const char* native_core_path = env->GetStringUTFChars(core_path, nullptr);
-    if (!native_core_path) return env->NewStringUTF("Could not read core path.");
+    if (!native_core_path) {
+        close_core(env);
+        return env->NewStringUTF("Could not read core path.");
+    }
     const char* native_rom_path = env->GetStringUTFChars(rom_path, nullptr);
     if (!native_rom_path) {
         env->ReleaseStringUTFChars(core_path, native_core_path);
+        close_core(env);
         return env->NewStringUTF("Could not read ROM path.");
     }
 
@@ -231,6 +238,7 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject bridge,
     if (!core) {
         const char* error = dlerror();
         env->ReleaseStringUTFChars(rom_path, native_rom_path);
+        close_core(env);
         return env->NewStringUTF(error ? error : "Could not load core library.");
     }
 
