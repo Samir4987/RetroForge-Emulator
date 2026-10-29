@@ -90,7 +90,7 @@ class LibretroRuntime(
     @Synchronized fun loadState(stateBytes: ByteArray): Boolean =
         runCatching { native?.nativeUnserialize(stateBytes) == true }.getOrDefault(false)
 
-    fun setPaused(paused: Boolean) {
+    @Synchronized fun setPaused(paused: Boolean) {
         val track = audioTrack ?: return
         runCatching {
             if (paused && track.playState == AudioTrack.PLAYSTATE_PLAYING) track.pause()
