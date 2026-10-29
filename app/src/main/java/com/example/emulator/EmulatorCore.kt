@@ -87,8 +87,8 @@ class EmulatorCore(
         )
         if (currentSystem.isDualScreen) {
             bottomScreenBitmap = Bitmap.createBitmap(
-                currentSystem.screenWidth,
-                currentSystem.screenHeight,
+                currentSystem.bottomScreenWidth,
+                currentSystem.bottomScreenHeight,
                 Bitmap.Config.ARGB_8888
             )
         } else {
@@ -153,7 +153,7 @@ class EmulatorCore(
             RetroSystem.GB -> updateGbSimulation()
             RetroSystem.GBC -> updateGbcSimulation()
             RetroSystem.GBA -> updateGbaSimulation()
-            RetroSystem.NDS -> updateNdsSimulation()
+            RetroSystem.NDS, RetroSystem.N3DS -> updateNdsSimulation()
             RetroSystem.N64 -> updateN64Simulation()
         }
     }
@@ -233,8 +233,8 @@ class EmulatorCore(
         // Top screen: Boss threats; Bottom screen: Stylus touches
         if (inputState.isTouching) {
             shieldCharge = (shieldCharge - 1).coerceAtLeast(0)
-            val touchPx = inputState.touchX * currentSystem.screenWidth
-            val touchPy = inputState.touchY * currentSystem.screenHeight
+            val touchPx = inputState.touchX * (bottomScreenBitmap?.width ?: currentSystem.screenWidth)
+            val touchPy = inputState.touchY * (bottomScreenBitmap?.height ?: currentSystem.screenHeight)
 
             touchTargets.forEach { target ->
                 val dist = kotlin.math.hypot(touchPx - target[0], touchPy - target[1])
@@ -296,7 +296,7 @@ class EmulatorCore(
             RetroSystem.GB -> renderGbFrame()
             RetroSystem.GBC -> renderGbcFrame()
             RetroSystem.GBA -> renderGbaFrame()
-            RetroSystem.NDS -> renderNdsFrame()
+            RetroSystem.NDS, RetroSystem.N3DS -> renderNdsFrame()
             RetroSystem.N64 -> renderN64Frame()
         }
     }
@@ -453,6 +453,8 @@ class EmulatorCore(
     private fun renderNdsFrame() {
         // TOP SCREEN: Radar & Boss Health
         val topCanvas = Canvas(screenBitmap)
+        // Draw using the DS reference coordinate space, then scale independently for NDS/N3DS.
+        topCanvas.scale(screenBitmap.width / 256f, screenBitmap.height / 192f)
         topCanvas.drawColor(Color.rgb(10, 15, 30))
         val paint = Paint().apply { isAntiAlias = true }
 
@@ -496,6 +498,7 @@ class EmulatorCore(
         // BOTTOM SCREEN: Touch Screen Matrix
         bottomScreenBitmap?.let { bBmp ->
             val bCanvas = Canvas(bBmp)
+            bCanvas.scale(bBmp.width / 256f, bBmp.height / 192f)
             bCanvas.drawColor(Color.rgb(25, 30, 45))
 
             // Touch Grid lines
