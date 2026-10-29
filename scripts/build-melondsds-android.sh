@@ -39,6 +39,18 @@ for ABI in arm64-v8a x86_64; do
   DEST="$ROOT_DIR/app/src/main/jniLibs/$ABI"
   mkdir -p "$DEST"
   cp "$CORE_PATH" "$DEST/melondsds_libretro_android.so"
+
+  case "$ABI" in
+    arm64-v8a) NDK_TRIPLE="aarch64-linux-android" ;;
+    x86_64) NDK_TRIPLE="x86_64-linux-android" ;;
+    *) echo "Unsupported ABI: $ABI" >&2; exit 1 ;;
+  esac
+  CXX_RUNTIME="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$NDK_TRIPLE/libc++_shared.so"
+  if [[ ! -s "$CXX_RUNTIME" ]]; then
+    echo "Missing NDK C++ shared runtime for $ABI: $CXX_RUNTIME" >&2
+    exit 1
+  fi
+  cp "$CXX_RUNTIME" "$DEST/libc++_shared.so"
 done
 
 LICENSE_PATH="$(find "$SOURCE_DIR" -maxdepth 2 -type f \( -iname 'license' -o -iname 'license.txt' -o -iname 'copying' \) -print -quit)"
