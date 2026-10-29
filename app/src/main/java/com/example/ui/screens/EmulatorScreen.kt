@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import java.io.File
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -52,6 +54,9 @@ import com.example.data.model.SaveStateDto
 import com.example.data.repository.SaveStateRepository
 import com.example.emulator.ControllerSkin
 import com.example.emulator.EmulatorCore
+import com.example.emulator.LibretroCoreSpec
+import com.example.emulator.LibretroRuntime
+import com.example.emulator.RetroSystem
 import com.example.ui.components.RetroScreenView
 import com.example.ui.components.SaveSlotDialog
 import com.example.ui.components.VirtualController
@@ -82,10 +87,21 @@ fun EmulatorScreen(
     var showSkinMenu by remember { mutableStateOf(false) }
 
     val saveStates = remember { mutableStateListOf<SaveStateDto>() }
+    var ndsRuntime by remember { mutableStateOf<LibretroRuntime?>(null) }
+    var ndsStatus by remember { mutableStateOf<String?>(null) }
+
+    DisposableEffect(ndsRuntime) {
+        onDispose {
+            ndsRuntime?.close()
+        }
+    }
 
     // Intercept back button to return safely to Library
     BackHandler {
         emulatorCore.isPaused = true
+        ndsRuntime?.close()
+        ndsRuntime = null
+        emulatorCore.stopExternalCore()
         coroutineScope.launch {
             romLibraryRepository?.recordPlayStats(game.id, emulatorCore.playTimeSeconds)
         }
@@ -94,7 +110,43 @@ fun EmulatorScreen(
 
     // Load game into core on launch
     LaunchedEffect(game) {
+        ndsRuntime?.close()
+        ndsRuntime = null
+        ndsStatus = null
         emulatorCore.loadGame(game)
+
+        if (emulatorCore.currentSystem == RetroSystem.NDS) {
+            val romBytes = game.romBytes
+            val spec = LibretroCoreSpec.forSystem(RetroSystem.NDS)
+            if (romBytes == null || romBytes.isEmpty()) {
+                ndsStatus = "No ROM data is available for real NDS emulation."
+            } else if (spec == null) {
+                ndsStatus = "No Nintendo DS core is configured."
+            } else {
+                val extension = game.romFileName
+                    ?.substringAfterLast('.', "nds")
+                    ?.lowercase()
+                    ?.takeIf { it in spec.extensions } ?: "nds"
+                val safeId = game.id.replace(Regex("[^A-Za-z0-9_-]"), "_")
+                val romFile = File(context.cacheDir, "retroforge-$safeId.$extension")
+                val runtime = LibretroRuntime(
+                    File(context.applicationInfo.nativeLibraryDir, "libretroforge_libretro.so"),
+                    spec
+                )
+                runtime.onFrame = { top, bottom -> emulatorCore.updateExternalFrame(top, bottom) }
+                val result = runCatching {
+                    romFile.writeBytes(romBytes)
+                    runtime.loadRom(romFile).getOrThrow()
+                }
+                if (result.isSuccess) {
+                    ndsRuntime = runtime
+                    emulatorCore.externalCoreActive = true
+                } else {
+                    runtime.close()
+                    ndsStatus = result.exceptionOrNull()?.message ?: "Could not start the Nintendo DS core."
+                }
+            }
+        }
         // Load cloud saves if logged in
         if (Firebase.auth.currentUser != null && saveStateRepository != null) {
             try {
@@ -109,11 +161,26 @@ fun EmulatorScreen(
 
     // High performance frame loop
     var frameTicker by remember { mutableStateOf(0L) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(ndsRuntime) {
         while (true) {
-            emulatorCore.tick()
+            if (emulatorCore.isPaused) {
+                ndsRuntime?.setPaused(true)
+            } else {
+                val runtime = ndsRuntime
+                if (runtime != null) {
+                    runtime.setPaused(false)
+                    val result = runtime.runFrame(emulatorCore.inputState)
+                    if (result.isFailure) {
+                        ndsStatus = result.exceptionOrNull()?.message ?: "Nintendo DS emulation stopped."
+                        runtime.close()
+                        ndsRuntime = null
+                        emulatorCore.stopExternalCore()
+                    }
+                } else {
+                    emulatorCore.tick()
+                }
+            }
             frameTicker = emulatorCore.frameCounter
-            // 60 FPS standard timing adjusted for fast forward
             val frameDelay = (16L / emulatorCore.fastForwardMultiplier.toLong().coerceAtLeast(1L)).coerceAtLeast(4L)
             delay(frameDelay)
         }
@@ -149,6 +216,9 @@ fun EmulatorScreen(
                         IconButton(
                             onClick = {
                                 emulatorCore.isPaused = true
+                                ndsRuntime?.close()
+                                ndsRuntime = null
+                                emulatorCore.stopExternalCore()
                                 onBackToLibrary()
                             },
                             modifier = Modifier.testTag("button_back_to_library")
@@ -347,6 +417,21 @@ fun EmulatorScreen(
                 isFastForwardActive = emulatorCore.fastForwardMultiplier > 1f,
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+
+        if (ndsStatus != null && emulatorCore.currentSystem == RetroSystem.NDS) {
+            Surface(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),
+                color = Color(0xEE7A1F1F),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text = ndsStatus ?: "",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(10.dp)
+                )
+            }
         }
 
         // Save State Slots Dialog
