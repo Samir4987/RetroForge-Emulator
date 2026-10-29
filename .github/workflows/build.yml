@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# Keep only the newest validation run for a pull request branch.
+concurrency:
+  group: android-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-android-apk:
     runs-on: ubuntu-24.04
