@@ -160,22 +160,23 @@ class LibretroRuntime(
         audioTrack = null
     }
 
-    private fun toLibretroJoypadMask(input: EmulatorInputState): Int {
-        var mask = 0
-        fun set(id: Int, pressed: Boolean) { if (pressed) mask = mask or (1 shl id) }
-        // Libretro RETRO_DEVICE_ID_JOYPAD mapping.
-        set(0, input.buttonB)
-        set(1, input.buttonY)
-        set(2, input.select)
-        set(3, input.start)
-        set(4, input.dpadUp)
-        set(5, input.dpadDown)
-        set(6, input.dpadLeft)
-        set(7, input.dpadRight)
-        set(8, input.buttonA)
-        set(9, input.buttonX)
-        set(10, input.triggerL)
-        set(11, input.triggerR)
-        return mask
-    }
+}
+
+/** Converts the app's buttons to RETRO_DEVICE_ID_JOYPAD bit positions. */
+internal fun toLibretroJoypadMask(input: EmulatorInputState): Int {
+    var mask = 0
+    fun set(id: Int, pressed: Boolean) { if (pressed) mask = mask or (1 shl id) }
+    set(0, input.buttonB)
+    set(1, input.buttonY)
+    set(2, input.select)
+    set(3, input.start)
+    set(4, input.dpadUp)
+    set(5, input.dpadDown)
+    set(6, input.dpadLeft)
+    set(7, input.dpadRight)
+    set(8, input.buttonA)
+    set(9, input.buttonX)
+    set(10, input.triggerL)
+    set(11, input.triggerR)
+    return mask
 }
