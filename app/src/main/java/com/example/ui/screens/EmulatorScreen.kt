@@ -142,6 +142,8 @@ fun EmulatorScreen(
         emulatorCore.loadGame(game)
 
         if (emulatorCore.currentSystem == RetroSystem.NDS) {
+            // Do not present the placeholder NDS demo as if it were real emulation.
+            emulatorCore.externalCoreActive = true
             val romBytes = game.romBytes
             val spec = LibretroCoreSpec.forSystem(RetroSystem.NDS)
             if (romBytes == null || romBytes.isEmpty()) {
@@ -203,7 +205,6 @@ fun EmulatorScreen(
                         ndsStatus = result.exceptionOrNull()?.message ?: "Nintendo DS emulation stopped."
                         runtime.close()
                         ndsRuntime = null
-                        emulatorCore.stopExternalCore()
                     }
                 } else {
                     emulatorCore.tick()
