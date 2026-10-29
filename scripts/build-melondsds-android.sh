@@ -29,7 +29,7 @@ for ABI in arm64-v8a x86_64; do
     -DENABLE_OPENGL=OFF
   cmake --build "$BUILD_DIR" --parallel 2
 
-  CORE_PATH="$(find "$BUILD_DIR" -type f \\( -name 'melondsds_libretro.so' -o -name 'melonds-ds_libretro.so' -o -name '*melonds*libretro*.so' \\) -print -quit)"
+  CORE_PATH="$(find "$BUILD_DIR" -type f \( -name 'melondsds_libretro.so' -o -name 'melonds-ds_libretro.so' -o -name '*melonds*libretro*.so' \) -print -quit)"
   if [[ -z "$CORE_PATH" ]]; then
     echo "No melonDS DS Libretro shared library produced for $ABI." >&2
     find "$BUILD_DIR" -type f -name '*.so' -print >&2 || true
@@ -41,7 +41,7 @@ for ABI in arm64-v8a x86_64; do
   cp "$CORE_PATH" "$DEST/melondsds_libretro_android.so"
 done
 
-LICENSE_PATH="$(find "$SOURCE_DIR" -maxdepth 2 -type f \\( -iname 'license' -o -iname 'license.txt' -o -iname 'copying' \\) -print -quit)"
+LICENSE_PATH="$(find "$SOURCE_DIR" -maxdepth 2 -type f \( -iname 'license' -o -iname 'license.txt' -o -iname 'copying' \) -print -quit)"
 if [[ -n "$LICENSE_PATH" ]]; then
   mkdir -p "$ROOT_DIR/app/src/main/assets/licenses"
   cp "$LICENSE_PATH" "$ROOT_DIR/app/src/main/assets/licenses/MELONDS-DS-LICENSE"
