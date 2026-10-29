@@ -67,7 +67,9 @@ import com.example.ui.components.VirtualController
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.example.data.local.RomLibraryRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
@@ -200,7 +202,8 @@ fun EmulatorScreen(
                 val runtime = ndsRuntime
                 if (runtime != null) {
                     runtime.setPaused(false)
-                    val result = runtime.runFrame(emulatorCore.inputState)
+                    val inputSnapshot = emulatorCore.inputState.copy()
+                    val result = withContext(Dispatchers.Default) { runtime.runFrame(inputSnapshot) }
                     if (result.isFailure) {
                         ndsStatus = result.exceptionOrNull()?.message ?: "Nintendo DS emulation stopped."
                         runtime.close()
