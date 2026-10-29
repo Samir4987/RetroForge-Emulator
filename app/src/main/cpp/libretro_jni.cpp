@@ -2,6 +2,8 @@
 #include <android/log.h>
 #include <dlfcn.h>
 #include <cstdint>
+#include <cstring>
+#include <algorithm>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -27,6 +29,21 @@ void* core = nullptr;
 bool initialized = false;
 bool game_loaded = false;
 std::vector<uint8_t> rom_data;
+JavaVM* java_vm = nullptr;
+jweak java_bridge = nullptr;
+jmethodID video_callback = nullptr;
+jmethodID audio_callback = nullptr;
+unsigned current_pixel_format = 1;
+unsigned joypad_mask = 0;
+float pointer_x = 0.5f, pointer_y = 0.5f;
+bool pointer_pressed = false;
+std::vector<int16_t> pending_audio;
+using SerializeSize = size_t (*)();
+using Serialize = bool (*)(void*, size_t);
+using Unserialize = bool (*)(const void*, size_t);
+SerializeSize serialize_size = nullptr;
+Serialize serialize_state = nullptr;
+Unserialize unserialize_state = nullptr;
 
 using SetEnvironment = void (*)(retro_environment_t);
 using SetVideo = void (*)(retro_video_refresh_t);
@@ -53,21 +70,96 @@ RunFrame run_frame = nullptr;
 UnloadGame unload_game = nullptr;
 GetAvInfo get_av_info = nullptr;
 
+JNIEnv* callback_env(bool& attached) {
+    attached = false;
+    if (!java_vm) return nullptr;
+    JNIEnv* env = nullptr;
+    jint status = java_vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+    if (status == JNI_OK) return env;
+    if (status != JNI_EDETACHED || java_vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return nullptr;
+    attached = true;
+    return env;
+}
+void detach_callback(bool attached) { if (attached && java_vm) java_vm->DetachCurrentThread(); }
+
 bool environment(unsigned command, void* data) {
-    // RETRO_ENVIRONMENT_SET_PIXEL_FORMAT = 10.
     if (command == 10 && data) {
-        const auto format = *static_cast<PixelFormat*>(data);
-        return format.format == 0 || format.format == 1 || format.format == 2;
+        unsigned format = static_cast<PixelFormat*>(data)->format;
+        if (format > 2) return false;
+        current_pixel_format = format;
+        return true;
     }
     return false;
 }
-
-// Playback pipelines are intentionally placeholders until video/audio/input are connected.
-void video_refresh(const void*, unsigned, unsigned, size_t) {}
-void audio_sample(int16_t, int16_t) {}
-size_t audio_sample_batch(const int16_t*, size_t frames) { return frames; }
+void video_refresh(const void* data, unsigned width, unsigned height, size_t pitch) {
+    if (!data || !java_vm || !java_bridge || !video_callback || !width || !height ||
+        width > 4096 || height > 4096) return;
+    const size_t bpp = current_pixel_format == 1 ? 4 : 2;
+    if (pitch < static_cast<size_t>(width) * bpp) return;
+    size_t count = static_cast<size_t>(width) * height;
+    if (count > static_cast<size_t>(std::numeric_limits<jsize>::max()) / 4) return;
+    std::vector<uint32_t> pixels(count);
+    const auto* src = static_cast<const uint8_t*>(data);
+    for (unsigned y = 0; y < height; ++y) {
+        const auto* row = src + static_cast<size_t>(y) * pitch;
+        for (unsigned x = 0; x < width; ++x) {
+            uint8_t r = 0, g = 0, b = 0;
+            if (current_pixel_format == 1) {
+                uint32_t px; std::memcpy(&px, row + static_cast<size_t>(x) * 4, 4);
+                r=(px>>16)&255; g=(px>>8)&255; b=px&255;
+            } else {
+                uint16_t px; std::memcpy(&px, row + static_cast<size_t>(x) * 2, 2);
+                if (current_pixel_format == 0) {
+                    r=((px>>10)&31)*255/31; g=((px>>5)&31)*255/31; b=(px&31)*255/31;
+                } else {
+                    r=((px>>11)&31)*255/31; g=((px>>5)&63)*255/63; b=(px&31)*255/31;
+                }
+            }
+            pixels[static_cast<size_t>(y)*width+x]=0xff000000u|(uint32_t(r)<<16)|(uint32_t(g)<<8)|b;
+        }
+    }
+    bool attached=false; JNIEnv* env=callback_env(attached); if(!env) return;
+    jobject bridge=env->NewLocalRef(java_bridge);
+    if(bridge) {
+        jbyteArray array=env->NewByteArray(static_cast<jsize>(count*4));
+        if(array) {
+            env->SetByteArrayRegion(array,0,static_cast<jsize>(count*4),reinterpret_cast<const jbyte*>(pixels.data()));
+            env->CallVoidMethod(bridge,video_callback,array,static_cast<jint>(width),static_cast<jint>(height));
+            env->DeleteLocalRef(array);
+        }
+        if(env->ExceptionCheck()) env->ExceptionClear();
+        env->DeleteLocalRef(bridge);
+    }
+    detach_callback(attached);
+}
+void send_audio(const int16_t* samples,size_t count) {
+    if(!samples||!count||!java_vm||!java_bridge||!audio_callback||count>static_cast<size_t>(std::numeric_limits<jsize>::max())) return;
+    bool attached=false; JNIEnv* env=callback_env(attached); if(!env) return;
+    jobject bridge=env->NewLocalRef(java_bridge);
+    if(bridge) {
+        jshortArray array=env->NewShortArray(static_cast<jsize>(count));
+        if(array) {
+            env->SetShortArrayRegion(array,0,static_cast<jsize>(count),reinterpret_cast<const jshort*>(samples));
+            env->CallVoidMethod(bridge,audio_callback,array);
+            env->DeleteLocalRef(array);
+        }
+        if(env->ExceptionCheck()) env->ExceptionClear();
+        env->DeleteLocalRef(bridge);
+    }
+    detach_callback(attached);
+}
+void audio_sample(int16_t l,int16_t r) { pending_audio.push_back(l); pending_audio.push_back(r); }
+size_t audio_sample_batch(const int16_t* samples,size_t frames) { if(samples&&frames) send_audio(samples,frames*2); return frames; }
 void input_poll() {}
-int16_t input_state(unsigned, unsigned, unsigned, unsigned) { return 0; }
+int16_t input_state(unsigned, unsigned device, unsigned, unsigned id) {
+    if(device==1&&id<16) return (joypad_mask&(1u<<id))?1:0;
+    if(device==6) {
+        if(id==0) return static_cast<int16_t>((pointer_x*2.f-1.f)*32767.f);
+        if(id==1) return static_cast<int16_t>((pointer_y*2.f-1.f)*32767.f);
+        if(id==2) return pointer_pressed?1:0;
+    }
+    return 0;
+}
 
 template <typename T> bool symbol(T& out, const char* name) {
     out = reinterpret_cast<T>(dlsym(core, name));
@@ -89,23 +181,41 @@ void reset_symbols() {
     run_frame = nullptr;
     unload_game = nullptr;
     get_av_info = nullptr;
+    serialize_size = nullptr; serialize_state = nullptr; unserialize_state = nullptr;
 }
 
-void close_core() {
+void close_core(JNIEnv* env = nullptr) {
     if (game_loaded && unload_game) unload_game();
     game_loaded = false;
     if (initialized && core_deinit) core_deinit();
     initialized = false;
     if (core) dlclose(core);
     core = nullptr;
-    rom_data.clear();
+    rom_data.clear(); pending_audio.clear();
+    if (env && java_bridge) env->DeleteWeakGlobalRef(java_bridge);
+    java_bridge=nullptr; video_callback=nullptr; audio_callback=nullptr;
     reset_symbols();
 }
 }
 
+extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
+    java_vm = vm;
+    return JNI_VERSION_1_6;
+}
+
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstring core_path, jstring rom_path) {
-    close_core();
+Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject bridge, jstring core_path, jstring rom_path) {
+    close_core(env);
+    java_bridge=env->NewWeakGlobalRef(bridge);
+    jclass bridge_class=env->GetObjectClass(bridge);
+    if(bridge_class) {
+        video_callback=env->GetMethodID(bridge_class,"onNativeVideoFrame","([BII)V");
+        audio_callback=env->GetMethodID(bridge_class,"onNativeAudioSamples","([S)V");
+        env->DeleteLocalRef(bridge_class);
+    }
+    if(!java_bridge||!video_callback||!audio_callback) {
+        close_core(env); return env->NewStringUTF("Could not bind Libretro video/audio callbacks.");
+    }
     if (!core_path || !rom_path) return env->NewStringUTF("Core path and ROM path are required.");
 
     const char* native_core_path = env->GetStringUTFChars(core_path, nullptr);
@@ -139,11 +249,14 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
         symbol(unload_game, "retro_unload_game") &&
         symbol(get_av_info, "retro_get_system_av_info");
     if (!ok) {
-        close_core();
+        close_core(env);
         env->ReleaseStringUTFChars(rom_path, native_rom_path);
         return env->NewStringUTF("Core is missing required Libretro API symbols.");
     }
 
+    serialize_size=reinterpret_cast<SerializeSize>(dlsym(core,"retro_serialize_size"));
+    serialize_state=reinterpret_cast<Serialize>(dlsym(core,"retro_serialize"));
+    unserialize_state=reinterpret_cast<Unserialize>(dlsym(core,"retro_unserialize"));
     set_environment(environment);
     set_video(video_refresh);
     set_audio(audio_sample);
@@ -161,21 +274,21 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
         std::ifstream input(native_rom_path, std::ios::binary | std::ios::ate);
         if (!input) {
             env->ReleaseStringUTFChars(rom_path, native_rom_path);
-            close_core();
+            close_core(env);
             return env->NewStringUTF("Could not open ROM file.");
         }
         const std::streamoff length = input.tellg();
         if (length <= 0 || static_cast<unsigned long long>(length) >
                 static_cast<unsigned long long>(std::numeric_limits<size_t>::max())) {
             env->ReleaseStringUTFChars(rom_path, native_rom_path);
-            close_core();
+            close_core(env);
             return env->NewStringUTF("ROM file is empty or too large.");
         }
         rom_data.resize(static_cast<size_t>(length));
         input.seekg(0, std::ios::beg);
         if (!input.read(reinterpret_cast<char*>(rom_data.data()), length)) {
             env->ReleaseStringUTFChars(rom_path, native_rom_path);
-            close_core();
+            close_core(env);
             return env->NewStringUTF("Could not read complete ROM file.");
         }
         game.data = rom_data.data();
@@ -185,7 +298,7 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
     const bool loaded = load_game(&game);
     env->ReleaseStringUTFChars(rom_path, native_rom_path);
     if (!loaded) {
-        close_core();
+        close_core(env);
         return env->NewStringUTF("Libretro core rejected the ROM.");
     }
     game_loaded = true;
@@ -198,10 +311,34 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_emulator_LibretroNative_nativeRunFrame(JNIEnv*, jobject) {
     if (!initialized || !game_loaded || !run_frame) return JNI_FALSE;
     run_frame();
+    if(!pending_audio.empty()) { send_audio(pending_audio.data(),pending_audio.size()); pending_audio.clear(); }
     return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_example_emulator_LibretroNative_nativeClose(JNIEnv*, jobject) {
-    close_core();
+Java_com_example_emulator_LibretroNative_nativeSetInputState(JNIEnv*, jobject, jint mask, jfloat x, jfloat y, jboolean touching) {
+    joypad_mask=static_cast<unsigned>(mask);
+    pointer_x=std::max(0.f,std::min(1.f,x)); pointer_y=std::max(0.f,std::min(1.f,y));
+    pointer_pressed=touching==JNI_TRUE;
 }
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_example_emulator_LibretroNative_nativeSerialize(JNIEnv* env, jobject) {
+    if(!game_loaded||!serialize_size||!serialize_state) return nullptr;
+    size_t size=serialize_size();
+    if(!size||size>64*1024*1024||size>static_cast<size_t>(std::numeric_limits<jsize>::max())) return nullptr;
+    std::vector<uint8_t> state(size); if(!serialize_state(state.data(),state.size())) return nullptr;
+    jbyteArray result=env->NewByteArray(static_cast<jsize>(size));
+    if(result) env->SetByteArrayRegion(result,0,static_cast<jsize>(size),reinterpret_cast<const jbyte*>(state.data()));
+    return result;
+}
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_example_emulator_LibretroNative_nativeUnserialize(JNIEnv* env, jobject, jbyteArray state) {
+    if(!game_loaded||!unserialize_state||!state) return JNI_FALSE;
+    jsize size=env->GetArrayLength(state); if(size<=0||size>64*1024*1024) return JNI_FALSE;
+    std::vector<uint8_t> bytes(static_cast<size_t>(size));
+    env->GetByteArrayRegion(state,0,size,reinterpret_cast<jbyte*>(bytes.data()));
+    if(env->ExceptionCheck()){env->ExceptionClear();return JNI_FALSE;}
+    return unserialize_state(bytes.data(),bytes.size())?JNI_TRUE:JNI_FALSE;
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_emulator_LibretroNative_nativeClose(JNIEnv* env, jobject) { close_core(env); }
