@@ -57,13 +57,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config ninja-build
 
+      - name: Cache melonDS DS Android core
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/jniLibs
+          key: melondsds-v1.1.8-ndk27.2-cxx-runtime-v1
+
       - name: Build and package melonDS DS core
         env:
           ANDROID_NDK_HOME: /home/runner/android-sdk/ndk/27.2.12479018
         run: |
           set -euxo pipefail
-          chmod +x scripts/build-melondsds-android.sh
-          ./scripts/build-melondsds-android.sh
+          if [[ -s app/src/main/jniLibs/arm64-v8a/melondsds_libretro_android.so &&
+                -s app/src/main/jniLibs/x86_64/melondsds_libretro_android.so &&
+                -s app/src/main/jniLibs/arm64-v8a/libc++_shared.so &&
+                -s app/src/main/jniLibs/x86_64/libc++_shared.so ]]; then
+            echo "Using cached melonDS DS core binaries."
+          else
+            chmod +x scripts/build-melondsds-android.sh
+            ./scripts/build-melondsds-android.sh
+          fi
 
       - name: Bootstrap missing Gradle wrapper JAR
         shell: bash
