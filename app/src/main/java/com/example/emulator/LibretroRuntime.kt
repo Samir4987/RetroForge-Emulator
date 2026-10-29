@@ -25,7 +25,7 @@ class LibretroRuntime(
     private val coreFile: File
         get() = File(frontendLibrary.parentFile, coreSpec.libraryFileName)
 
-    var state: State = State.UNAVAILABLE
+    @Volatile var state: State = State.UNAVAILABLE
         private set
 
     var screenBitmap: Bitmap? = null
@@ -41,7 +41,7 @@ class LibretroRuntime(
         if (frontendLibrary.isFile && coreFile.isFile) state = State.READY
     }
 
-    fun loadRom(rom: File): Result<Unit> {
+    @Synchronized fun loadRom(rom: File): Result<Unit> {
         if (state == State.CLOSED) return Result.failure(IllegalStateException("Libretro runtime is closed."))
         if (!isAvailable) {
             return Result.failure(IllegalStateException(
@@ -78,16 +78,16 @@ class LibretroRuntime(
     }
 
     /** Pushes current controls before advancing one emulated frame. */
-    fun runFrame(input: EmulatorInputState): Result<Unit> = runCatching {
+    @Synchronized fun runFrame(input: EmulatorInputState): Result<Unit> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before running frames." }
         val bridge = checkNotNull(native)
         bridge.nativeSetInputState(toLibretroJoypadMask(input), input.touchX, input.touchY, input.isTouching)
         check(bridge.nativeRunFrame()) { "Native Libretro core is not running." }
     }
 
-    fun saveState(): ByteArray? = runCatching { native?.nativeSerialize() }.getOrNull()
+    @Synchronized fun saveState(): ByteArray? = runCatching { native?.nativeSerialize() }.getOrNull()
 
-    fun loadState(stateBytes: ByteArray): Boolean =
+    @Synchronized fun loadState(stateBytes: ByteArray): Boolean =
         runCatching { native?.nativeUnserialize(stateBytes) == true }.getOrDefault(false)
 
     fun setPaused(paused: Boolean) {
@@ -132,7 +132,7 @@ class LibretroRuntime(
         }
     }
 
-    fun close() {
+    @Synchronized fun close() {
         if (state == State.CLOSED) return
         runCatching { native?.nativeClose() }
         native = null
