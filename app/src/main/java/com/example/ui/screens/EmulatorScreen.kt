@@ -157,7 +157,10 @@ fun EmulatorScreen(
                 val romFile = File(context.cacheDir, "retroforge-$safeId.$extension")
                 val runtime = LibretroRuntime(
                     File(context.applicationInfo.nativeLibraryDir, "libretroforge_libretro.so"),
-                    spec
+                    spec,
+                    File(context.filesDir, "retroforge/system"),
+                    File(context.filesDir, "retroforge/saves"),
+                    File(context.filesDir, "retroforge/assets")
                 )
                 runtime.onFrame = { top, bottom -> emulatorCore.updateExternalFrame(top, bottom) }
                 val result = runCatching {
