@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import android.util.Base64
 import java.io.File
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -305,8 +306,12 @@ fun EmulatorScreen(
                                     emulatorCore = emulatorCore,
                                     saveStateRepository = saveStateRepository,
                                     saveStates = saveStates,
+                                    realRuntime = ndsRuntime,
                                     onSaved = {
                                         Toast.makeText(context, "Quick Saved to Slot 1", Toast.LENGTH_SHORT).show()
+                                    },
+                                    onSaveFailed = {
+                                        Toast.makeText(context, "This core could not create a save state.", Toast.LENGTH_SHORT).show()
                                     }
                                 )
                             },
@@ -447,13 +452,23 @@ fun EmulatorScreen(
                         emulatorCore = emulatorCore,
                         saveStateRepository = saveStateRepository,
                         saveStates = saveStates,
+                        realRuntime = ndsRuntime,
                         onSaved = {
                             Toast.makeText(context, "State saved to Slot ${slot + 1}", Toast.LENGTH_SHORT).show()
+                        },
+                        onSaveFailed = {
+                            Toast.makeText(context, "This core could not create a save state.", Toast.LENGTH_SHORT).show()
                         }
                     )
                 },
                 onLoadFromSlot = { dto ->
-                    val success = emulatorCore.loadSaveStateBase64(dto.stateData)
+                    val success = if (ndsRuntime != null) {
+                        runCatching {
+                            ndsRuntime?.loadState(Base64.decode(dto.stateData, Base64.DEFAULT)) == true
+                        }.getOrDefault(false)
+                    } else {
+                        emulatorCore.loadSaveStateBase64(dto.stateData)
+                    }
                     if (success) {
                         Toast.makeText(context, "Loaded Slot ${dto.slot + 1}", Toast.LENGTH_SHORT).show()
                         showSlotDialog = false
@@ -479,9 +494,19 @@ private fun saveStateToSlot(
     emulatorCore: EmulatorCore,
     saveStateRepository: SaveStateRepository?,
     saveStates: MutableList<SaveStateDto>,
-    onSaved: () -> Unit
+    realRuntime: LibretroRuntime? = null,
+    onSaved: () -> Unit,
+    onSaveFailed: () -> Unit = {}
 ) {
-    val stateBase64 = emulatorCore.exportSaveStateBase64()
+    val stateBase64 = if (realRuntime != null) {
+        realRuntime.saveState()?.let { Base64.encodeToString(it, Base64.NO_WRAP) }.orEmpty()
+    } else {
+        emulatorCore.exportSaveStateBase64()
+    }
+    if (stateBase64.isBlank()) {
+        onSaveFailed()
+        return
+    }
     val thumbnail = emulatorCore.generateThumbnailBase64()
     val uid = Firebase.auth.currentUser?.uid ?: "local_user"
     val docId = "${game.id}_slot_$slot"
