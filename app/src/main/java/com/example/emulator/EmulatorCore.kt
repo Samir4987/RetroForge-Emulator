@@ -168,7 +168,7 @@ class EmulatorCore(
             RetroSystem.GB -> updateGbSimulation()
             RetroSystem.GBC -> updateGbcSimulation()
             RetroSystem.GBA -> updateGbaSimulation()
-            RetroSystem.NDS, RetroSystem.N3DS -> updateNdsSimulation()
+            RetroSystem.NDS -> updateNdsSimulation()
             RetroSystem.N64 -> updateN64Simulation()
         }
     }
@@ -311,7 +311,7 @@ class EmulatorCore(
             RetroSystem.GB -> renderGbFrame()
             RetroSystem.GBC -> renderGbcFrame()
             RetroSystem.GBA -> renderGbaFrame()
-            RetroSystem.NDS, RetroSystem.N3DS -> renderNdsFrame()
+            RetroSystem.NDS -> renderNdsFrame()
             RetroSystem.N64 -> renderN64Frame()
         }
     }
