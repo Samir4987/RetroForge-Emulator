@@ -13,7 +13,10 @@ import java.nio.ByteBuffer
  */
 class LibretroRuntime(
     private val frontendLibrary: File,
-    private val coreSpec: LibretroCoreSpec
+    private val coreSpec: LibretroCoreSpec,
+    private val systemDirectory: File = File(frontendLibrary.parentFile, "system"),
+    private val saveDirectory: File = File(frontendLibrary.parentFile, "save"),
+    private val assetsDirectory: File = File(frontendLibrary.parentFile, "assets")
 ) : LibretroCallbacks {
     enum class State { UNAVAILABLE, READY, GAME_LOADED, CLOSED }
 
@@ -53,7 +56,15 @@ class LibretroRuntime(
         }
 
         return runCatching {
+            systemDirectory.mkdirs()
+            saveDirectory.mkdirs()
+            assetsDirectory.mkdirs()
             val bridge = native ?: LibretroNative(this).also { native = it }
+            bridge.nativeSetDirectories(
+                systemDirectory.absolutePath,
+                saveDirectory.absolutePath,
+                assetsDirectory.absolutePath
+            )
             val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
             if (error != null) throw IllegalStateException(error)
             state = State.GAME_LOADED
