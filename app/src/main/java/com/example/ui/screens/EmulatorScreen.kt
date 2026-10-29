@@ -456,6 +456,7 @@ fun EmulatorScreen(
                 fastForwardMultiplier = emulatorCore.fastForwardMultiplier,
                 isPaused = emulatorCore.isPaused,
                 enableScanlines = enableScanlines,
+                frameVersion = frameTicker,
                 onTouchInput = { nx, ny, touching ->
                     emulatorCore.inputState.touchX = nx
                     emulatorCore.inputState.touchY = ny
