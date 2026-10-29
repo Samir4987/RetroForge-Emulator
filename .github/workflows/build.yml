@@ -184,6 +184,12 @@ jobs:
             app/build/generated/res/google-services \
             2>/dev/null || true
 
+      - name: Run NDS integration unit tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./gradlew --no-daemon :app:testDebugUnitTest --tests com.example.emulator.LibretroNdsCoreSpecTest
+
       - name: Build debug APK
         shell: bash
         run: |
