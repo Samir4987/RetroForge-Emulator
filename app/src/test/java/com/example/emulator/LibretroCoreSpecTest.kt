@@ -19,8 +19,8 @@ class LibretroCoreSpecTest {
     fun gbcCandidateUsesMgbaAndOnlyGbcExtension() {
         val spec = LibretroCoreSpec.forSystem(RetroSystem.GBC)
         assertNotNull(spec)
-        assertEquals("skyemu_libretro_android.so", spec?.libraryFileName)
-        assertEquals("https://github.com/libretro/SkyEmu", spec?.upstreamUrl)
+        assertEquals("mgba_libretro_android.so", spec?.libraryFileName)
+        assertEquals("https://github.com/libretro/mgba", spec?.upstreamUrl)
         assertEquals(setOf("gbc"), spec?.extensions)
     }
 
