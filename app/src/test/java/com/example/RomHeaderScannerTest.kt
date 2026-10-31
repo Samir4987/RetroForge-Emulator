@@ -40,7 +40,7 @@ class RomHeaderScannerTest {
         val bytes = ByteArray(512)
         bytes[0x0104] = 0xCE.toByte()
         val titleBytes = "MARIO LAND\u0000\u0000".toByteArray(StandardCharsets.US_ASCII)
-        System.arraycopy(titleBytes, 0, bytes, 0x0134, 16)
+        System.arraycopy(titleBytes, 0, bytes, 0x0134, titleBytes.size)
 
         // Set CGB flag 0x80 (GBC compatible)
         bytes[0x0143] = 0x80.toByte()
