@@ -123,12 +123,14 @@ object RomHeaderScanner {
     private fun parseGbGbcHeader(bytes: ByteArray, ext: String, fileName: String): ScanResult {
         if (bytes.size < 0x150) return fallbackResult(fileName, ext)
 
-        // Title at 0x0134 - 0x0143
-        val rawTitle = String(bytes, 0x0134, 16, StandardCharsets.US_ASCII).replace("\u0000", "").trim()
+        // CGB headers store an 11-byte title followed by a 4-byte
+        // manufacturer code. DMG-only headers can use the full 16-byte title.
+        val cgbFlag = bytes[0x0143].toInt() and 0xFF
+        val titleLength = if (cgbFlag == 0x80 || cgbFlag == 0xC0) 11 else 16
+        val rawTitle = String(bytes, 0x0134, titleLength, StandardCharsets.US_ASCII)
+            .replace("\u0000", "").trim()
         val title = cleanTitle(if (rawTitle.isNotBlank()) rawTitle else fileName.substringBeforeLast('.'))
 
-        // GBC flag at 0x0143
-        val cgbFlag = bytes[0x0143].toInt() and 0xFF
         val isGbc = (cgbFlag == 0x80 || cgbFlag == 0xC0) || ext == "gbc"
         val system = if (isGbc) RetroSystem.GBC else RetroSystem.GB
 
