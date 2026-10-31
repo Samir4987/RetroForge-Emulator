@@ -50,6 +50,7 @@ fun RetroScreenView(
     fastForwardMultiplier: Float = 1.0f,
     isPaused: Boolean = false,
     enableScanlines: Boolean = true,
+    frameVersion: Long = 0L,
     onTouchInput: ((x: Float, y: Float, isTouching: Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -78,7 +79,8 @@ fun RetroScreenView(
                 ) {
                     ScreenCanvas(
                         bitmap = screenBitmap,
-                        enableScanlines = enableScanlines
+                        enableScanlines = enableScanlines,
+                        frameVersion = frameVersion
                     )
                     ScreenHudOverlay(
                         isRewinding = isRewinding,
@@ -97,7 +99,7 @@ fun RetroScreenView(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Bottom Touch Screen
+                // Bottom Touch Screen. The 3DS bottom panel is 320x240; its top panel is 400x240.
                 var touchPos by remember { mutableStateOf<Offset?>(null) }
                 Box(
                     modifier = Modifier
@@ -139,7 +141,8 @@ fun RetroScreenView(
                 ) {
                     ScreenCanvas(
                         bitmap = bottomScreenBitmap,
-                        enableScanlines = enableScanlines
+                        enableScanlines = enableScanlines,
+                        frameVersion = frameVersion
                     )
                     Text(
                         text = "TOUCH SCREEN",
@@ -165,7 +168,8 @@ fun RetroScreenView(
             ) {
                 ScreenCanvas(
                     bitmap = screenBitmap,
-                    enableScanlines = enableScanlines
+                    enableScanlines = enableScanlines,
+                    frameVersion = frameVersion
                 )
                 ScreenHudOverlay(
                     isRewinding = isRewinding,
@@ -180,9 +184,10 @@ fun RetroScreenView(
 @Composable
 private fun ScreenCanvas(
     bitmap: Bitmap,
-    enableScanlines: Boolean
+    enableScanlines: Boolean,
+    frameVersion: Long
 ) {
-    val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
+    val imageBitmap = remember(bitmap, frameVersion) { bitmap.asImageBitmap() }
 
     Canvas(
         modifier = Modifier

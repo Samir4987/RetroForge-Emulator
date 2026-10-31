@@ -33,6 +33,7 @@ class EmulatorCore(
 
     var isPaused = false
     var isRewinding = false
+    var externalCoreActive = false
     var fastForwardMultiplier = 1.0f // 1x, 1.5x, 2x, 4x, 8x
     var frameCounter = 0L
     var playTimeSeconds = 0L
@@ -71,6 +72,7 @@ class EmulatorCore(
     }
 
     fun loadGame(game: RetroGame) {
+        externalCoreActive = false
         currentGame = game
         currentSystem = RetroSystem.fromCode(game.system)
         recreateBuffers()
@@ -87,8 +89,8 @@ class EmulatorCore(
         )
         if (currentSystem.isDualScreen) {
             bottomScreenBitmap = Bitmap.createBitmap(
-                currentSystem.screenWidth,
-                currentSystem.screenHeight,
+                currentSystem.bottomScreenWidth,
+                currentSystem.bottomScreenHeight,
                 Bitmap.Config.ARGB_8888
             )
         } else {
@@ -113,8 +115,21 @@ class EmulatorCore(
         shieldCharge = 100
     }
 
+    /** Replace the placeholder renderer with frames delivered by a real native core. */
+    fun updateExternalFrame(top: Bitmap, bottom: Bitmap?) {
+        screenBitmap = top
+        bottomScreenBitmap = bottom
+        externalCoreActive = true
+        frameCounter++
+        if (frameCounter % 60L == 0L) playTimeSeconds++
+    }
+
+    fun stopExternalCore() {
+        externalCoreActive = false
+    }
+
     fun tick() {
-        if (isPaused) return
+        if (isPaused || externalCoreActive) return
 
         if (isRewinding) {
             val pastFrame = rewindBuffer.pop()
@@ -233,8 +248,8 @@ class EmulatorCore(
         // Top screen: Boss threats; Bottom screen: Stylus touches
         if (inputState.isTouching) {
             shieldCharge = (shieldCharge - 1).coerceAtLeast(0)
-            val touchPx = inputState.touchX * currentSystem.screenWidth
-            val touchPy = inputState.touchY * currentSystem.screenHeight
+            val touchPx = inputState.touchX * (bottomScreenBitmap?.width ?: currentSystem.screenWidth)
+            val touchPy = inputState.touchY * (bottomScreenBitmap?.height ?: currentSystem.screenHeight)
 
             touchTargets.forEach { target ->
                 val dist = kotlin.math.hypot(touchPx - target[0], touchPy - target[1])
@@ -453,6 +468,8 @@ class EmulatorCore(
     private fun renderNdsFrame() {
         // TOP SCREEN: Radar & Boss Health
         val topCanvas = Canvas(screenBitmap)
+        // Draw using the DS reference coordinate space, then scale independently for NDS/N3DS.
+        topCanvas.scale(screenBitmap.width / 256f, screenBitmap.height / 192f)
         topCanvas.drawColor(Color.rgb(10, 15, 30))
         val paint = Paint().apply { isAntiAlias = true }
 
@@ -496,6 +513,7 @@ class EmulatorCore(
         // BOTTOM SCREEN: Touch Screen Matrix
         bottomScreenBitmap?.let { bBmp ->
             val bCanvas = Canvas(bBmp)
+            bCanvas.scale(bBmp.width / 256f, bBmp.height / 192f)
             bCanvas.drawColor(Color.rgb(25, 30, 45))
 
             // Touch Grid lines

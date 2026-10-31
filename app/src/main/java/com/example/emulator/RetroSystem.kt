@@ -10,6 +10,8 @@ enum class RetroSystem(
     val defaultAspect: Float,
     val isDualScreen: Boolean = false,
     val hasAnalogStick: Boolean = false,
+    val bottomScreenWidth: Int = screenWidth,
+    val bottomScreenHeight: Int = screenHeight,
     val supportedExtensions: List<String>
 ) {
     GB(
@@ -58,7 +60,7 @@ enum class RetroSystem(
         defaultAspect = 256f / 192f,
         isDualScreen = true,
         hasAnalogStick = false,
-        supportedExtensions = listOf("nds", "ds")
+        supportedExtensions = listOf("nds", "ds", "dsi", "srl")
     ),
     N64(
         code = "N64",

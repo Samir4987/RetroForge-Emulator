@@ -1,7 +1,13 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import android.util.Base64
+import android.view.KeyEvent as AndroidKeyEvent
+import java.io.File
 import androidx.activity.compose.BackHandler
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,6 +36,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -39,10 +46,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -52,13 +63,18 @@ import com.example.data.model.SaveStateDto
 import com.example.data.repository.SaveStateRepository
 import com.example.emulator.ControllerSkin
 import com.example.emulator.EmulatorCore
+import com.example.emulator.LibretroCoreSpec
+import com.example.emulator.LibretroRuntime
+import com.example.emulator.RetroSystem
 import com.example.ui.components.RetroScreenView
 import com.example.ui.components.SaveSlotDialog
 import com.example.ui.components.VirtualController
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.example.data.local.RomLibraryRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
@@ -72,6 +88,8 @@ fun EmulatorScreen(
     onBackToLibrary: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val gamepadFocusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope()
 
     var activeSkin by remember { mutableStateOf(initialSkin) }
@@ -82,10 +100,42 @@ fun EmulatorScreen(
     var showSkinMenu by remember { mutableStateOf(false) }
 
     val saveStates = remember { mutableStateListOf<SaveStateDto>() }
+    var ndsRuntime by remember { mutableStateOf<LibretroRuntime?>(null) }
+    var ndsStatus by remember { mutableStateOf<String?>(null) }
+    var wasRunningBeforeBackground by remember { mutableStateOf(false) }
+
+    DisposableEffect(lifecycleOwner, ndsRuntime) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    wasRunningBeforeBackground = !emulatorCore.isPaused
+                    if (wasRunningBeforeBackground) emulatorCore.isPaused = true
+                    ndsRuntime?.setPaused(true)
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    if (wasRunningBeforeBackground) emulatorCore.isPaused = false
+                    wasRunningBeforeBackground = false
+                    ndsRuntime?.setPaused(emulatorCore.isPaused)
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    DisposableEffect(ndsRuntime) {
+        onDispose {
+            ndsRuntime?.close()
+        }
+    }
 
     // Intercept back button to return safely to Library
     BackHandler {
         emulatorCore.isPaused = true
+        ndsRuntime?.close()
+        ndsRuntime = null
+        emulatorCore.stopExternalCore()
         coroutineScope.launch {
             romLibraryRepository?.recordPlayStats(game.id, emulatorCore.playTimeSeconds)
         }
@@ -94,7 +144,48 @@ fun EmulatorScreen(
 
     // Load game into core on launch
     LaunchedEffect(game) {
+        ndsRuntime?.close()
+        ndsRuntime = null
+        ndsStatus = null
         emulatorCore.loadGame(game)
+
+        if (emulatorCore.currentSystem == RetroSystem.NDS) {
+            // Do not present the placeholder NDS demo as if it were real emulation.
+            emulatorCore.externalCoreActive = true
+            val romBytes = game.romBytes
+            val spec = LibretroCoreSpec.forSystem(RetroSystem.NDS)
+            if (romBytes == null || romBytes.isEmpty()) {
+                ndsStatus = "No ROM data is available for real NDS emulation."
+            } else if (spec == null) {
+                ndsStatus = "No Nintendo DS core is configured."
+            } else {
+                val extension = game.romFileName
+                    ?.substringAfterLast('.', "nds")
+                    ?.lowercase()
+                    ?.takeIf { it in spec.extensions } ?: "nds"
+                val safeId = game.id.replace(Regex("[^A-Za-z0-9_-]"), "_")
+                val romFile = File(context.cacheDir, "retroforge-$safeId.$extension")
+                val runtime = LibretroRuntime(
+                    File(context.applicationInfo.nativeLibraryDir, "libretroforge_libretro.so"),
+                    spec,
+                    File(context.filesDir, "retroforge/system"),
+                    File(context.filesDir, "retroforge/saves"),
+                    File(context.filesDir, "retroforge/assets")
+                )
+                runtime.onFrame = { top, bottom -> emulatorCore.updateExternalFrame(top, bottom) }
+                val result = runCatching {
+                    romFile.writeBytes(romBytes)
+                    runtime.loadRom(romFile).getOrThrow()
+                }
+                if (result.isSuccess) {
+                    ndsRuntime = runtime
+                    emulatorCore.externalCoreActive = true
+                } else {
+                    runtime.close()
+                    ndsStatus = result.exceptionOrNull()?.message ?: "Could not start the Nintendo DS core."
+                }
+            }
+        }
         // Load cloud saves if logged in
         if (Firebase.auth.currentUser != null && saveStateRepository != null) {
             try {
@@ -108,12 +199,31 @@ fun EmulatorScreen(
     }
 
     // High performance frame loop
-    var frameTicker by remember { mutableStateOf(0L) }
     LaunchedEffect(Unit) {
+        runCatching { gamepadFocusRequester.requestFocus() }
+    }
+
+    var frameTicker by remember { mutableStateOf(0L) }
+    LaunchedEffect(ndsRuntime) {
         while (true) {
-            emulatorCore.tick()
+            if (emulatorCore.isPaused) {
+                ndsRuntime?.setPaused(true)
+            } else {
+                val runtime = ndsRuntime
+                if (runtime != null) {
+                    runtime.setPaused(false)
+                    val inputSnapshot = emulatorCore.inputState.copy()
+                    val result = withContext(Dispatchers.Default) { runtime.runFrame(inputSnapshot) }
+                    if (result.isFailure) {
+                        ndsStatus = result.exceptionOrNull()?.message ?: "Nintendo DS emulation stopped."
+                        runtime.close()
+                        ndsRuntime = null
+                    }
+                } else {
+                    emulatorCore.tick()
+                }
+            }
             frameTicker = emulatorCore.frameCounter
-            // 60 FPS standard timing adjusted for fast forward
             val frameDelay = (16L / emulatorCore.fastForwardMultiplier.toLong().coerceAtLeast(1L)).coerceAtLeast(4L)
             delay(frameDelay)
         }
@@ -124,6 +234,27 @@ fun EmulatorScreen(
             .fillMaxSize()
             .background(Color(0xFF0A0C14))
             .testTag("emulator_screen")
+            .focusRequester(gamepadFocusRequester)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                val isDown = event.nativeKeyEvent.action == AndroidKeyEvent.ACTION_DOWN
+                val input = emulatorCore.inputState
+                when (event.nativeKeyEvent.keyCode) {
+                    AndroidKeyEvent.KEYCODE_DPAD_UP -> { input.dpadUp = isDown; true }
+                    AndroidKeyEvent.KEYCODE_DPAD_DOWN -> { input.dpadDown = isDown; true }
+                    AndroidKeyEvent.KEYCODE_DPAD_LEFT -> { input.dpadLeft = isDown; true }
+                    AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> { input.dpadRight = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_A -> { input.buttonA = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_B -> { input.buttonB = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_X -> { input.buttonX = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_Y -> { input.buttonY = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_L1 -> { input.triggerL = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_R1 -> { input.triggerR = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_START -> { input.start = isDown; true }
+                    AndroidKeyEvent.KEYCODE_BUTTON_SELECT -> { input.select = isDown; true }
+                    else -> false
+                }
+            }
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -149,6 +280,9 @@ fun EmulatorScreen(
                         IconButton(
                             onClick = {
                                 emulatorCore.isPaused = true
+                                ndsRuntime?.close()
+                                ndsRuntime = null
+                                emulatorCore.stopExternalCore()
                                 onBackToLibrary()
                             },
                             modifier = Modifier.testTag("button_back_to_library")
@@ -235,8 +369,13 @@ fun EmulatorScreen(
                                     emulatorCore = emulatorCore,
                                     saveStateRepository = saveStateRepository,
                                     saveStates = saveStates,
+                                    realRuntime = ndsRuntime,
+                                    requireNativeRuntime = emulatorCore.currentSystem == RetroSystem.NDS,
                                     onSaved = {
                                         Toast.makeText(context, "Quick Saved to Slot 1", Toast.LENGTH_SHORT).show()
+                                    },
+                                    onSaveFailed = {
+                                        Toast.makeText(context, "This core could not create a save state.", Toast.LENGTH_SHORT).show()
                                     }
                                 )
                             },
@@ -317,6 +456,7 @@ fun EmulatorScreen(
                 fastForwardMultiplier = emulatorCore.fastForwardMultiplier,
                 isPaused = emulatorCore.isPaused,
                 enableScanlines = enableScanlines,
+                frameVersion = frameTicker,
                 onTouchInput = { nx, ny, touching ->
                     emulatorCore.inputState.touchX = nx
                     emulatorCore.inputState.touchY = ny
@@ -349,6 +489,21 @@ fun EmulatorScreen(
             )
         }
 
+        if (ndsStatus != null && emulatorCore.currentSystem == RetroSystem.NDS) {
+            Surface(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),
+                color = Color(0xEE7A1F1F),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text = ndsStatus ?: "",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(10.dp)
+                )
+            }
+        }
+
         // Save State Slots Dialog
         if (showSlotDialog) {
             SaveSlotDialog(
@@ -362,13 +517,24 @@ fun EmulatorScreen(
                         emulatorCore = emulatorCore,
                         saveStateRepository = saveStateRepository,
                         saveStates = saveStates,
+                        realRuntime = ndsRuntime,
+                        requireNativeRuntime = emulatorCore.currentSystem == RetroSystem.NDS,
                         onSaved = {
                             Toast.makeText(context, "State saved to Slot ${slot + 1}", Toast.LENGTH_SHORT).show()
+                        },
+                        onSaveFailed = {
+                            Toast.makeText(context, "This core could not create a save state.", Toast.LENGTH_SHORT).show()
                         }
                     )
                 },
                 onLoadFromSlot = { dto ->
-                    val success = emulatorCore.loadSaveStateBase64(dto.stateData)
+                    val success = if (emulatorCore.currentSystem == RetroSystem.NDS) {
+                        runCatching {
+                            ndsRuntime?.loadState(Base64.decode(dto.stateData, Base64.DEFAULT)) == true
+                        }.getOrDefault(false)
+                    } else {
+                        emulatorCore.loadSaveStateBase64(dto.stateData)
+                    }
                     if (success) {
                         Toast.makeText(context, "Loaded Slot ${dto.slot + 1}", Toast.LENGTH_SHORT).show()
                         showSlotDialog = false
@@ -394,9 +560,20 @@ private fun saveStateToSlot(
     emulatorCore: EmulatorCore,
     saveStateRepository: SaveStateRepository?,
     saveStates: MutableList<SaveStateDto>,
-    onSaved: () -> Unit
+    realRuntime: LibretroRuntime? = null,
+    requireNativeRuntime: Boolean = false,
+    onSaved: () -> Unit,
+    onSaveFailed: () -> Unit = {}
 ) {
-    val stateBase64 = emulatorCore.exportSaveStateBase64()
+    val stateBase64 = when {
+        realRuntime != null -> realRuntime.saveState()?.let { Base64.encodeToString(it, Base64.NO_WRAP) }.orEmpty()
+        requireNativeRuntime -> ""
+        else -> emulatorCore.exportSaveStateBase64()
+    }
+    if (stateBase64.isBlank()) {
+        onSaveFailed()
+        return
+    }
     val thumbnail = emulatorCore.generateThumbnailBase64()
     val uid = Firebase.auth.currentUser?.uid ?: "local_user"
     val docId = "${game.id}_slot_$slot"
