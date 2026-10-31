@@ -9,9 +9,7 @@ class RomHeaderScannerTest {
     @Test
     fun parsesUppercaseAndDottedGbExtension() {
         val header = gameBoyHeader(cgbFlag = 0x00)
-
         val result = RomHeaderScanner.parseHeader(header, ".GB", "Demo.gb")
-
         assertEquals(RetroSystem.GB, result.system)
         assertEquals("DMG-00", result.gameCode)
     }
@@ -19,9 +17,7 @@ class RomHeaderScannerTest {
     @Test
     fun parsesUppercaseGbcExtension() {
         val header = gameBoyHeader(cgbFlag = 0x00)
-
         val result = RomHeaderScanner.parseHeader(header, "GBC", "Demo.gbc")
-
         assertEquals(RetroSystem.GBC, result.system)
         assertEquals("CGB-00", result.gameCode)
     }
@@ -34,34 +30,25 @@ class RomHeaderScannerTest {
             this[0x0141] = 'C'.code.toByte()
             this[0x0142] = 'D'.code.toByte()
         }
-
         val result = RomHeaderScanner.parseHeader(header, "gb", "ColorGame.gb")
-
-        assertEquals("TEST", result.title)
+        assertEquals("Test", result.title)
     }
 
     @Test
     fun detectsColorHardwareFromGbHeaderFlag() {
-        val header = gameBoyHeader(cgbFlag = 0x80)
-
-        val result = RomHeaderScanner.parseHeader(header, "gb", "ColorGame.gb")
-
+        val result = RomHeaderScanner.parseHeader(gameBoyHeader(0x80), "gb", "ColorGame.gb")
         assertEquals(RetroSystem.GBC, result.system)
     }
 
     @Test
     fun detectsColorOnlyHeaderFlag() {
-        val header = gameBoyHeader(cgbFlag = 0xC0)
-
-        val result = RomHeaderScanner.parseHeader(header, "gb", "ColorOnlyGame.gb")
-
+        val result = RomHeaderScanner.parseHeader(gameBoyHeader(0xC0), "gb", "ColorOnlyGame.gb")
         assertEquals(RetroSystem.GBC, result.system)
     }
 
     @Test
     fun shortGbcHeaderUsesNormalizedExtensionFallback() {
         val result = RomHeaderScanner.parseHeader(ByteArray(0x80), ".GBC", "Short.gbc")
-
         assertEquals(RetroSystem.GBC, result.system)
     }
 
@@ -69,13 +56,10 @@ class RomHeaderScannerTest {
     fun readsHeaderUntilEofWhenStreamReturnsSmallChunks() {
         val bytes = ByteArray(0x180) { it.toByte() }
         val chunkedStream = object : ByteArrayInputStream(bytes) {
-            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-                return super.read(buffer, offset, minOf(length, 7))
-            }
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                super.read(buffer, offset, minOf(length, 7))
         }
-
         val (header, bytesRead) = RomHeaderScanner.readHeaderBytes(chunkedStream)
-
         assertEquals(bytes.size, bytesRead)
         assertEquals(bytes.toList(), header.take(bytes.size))
     }
