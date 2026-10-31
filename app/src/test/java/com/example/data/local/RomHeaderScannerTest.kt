@@ -27,6 +27,20 @@ class RomHeaderScannerTest {
     }
 
     @Test
+    fun excludesCgbManufacturerCodeFromGameTitle() {
+        val header = gameBoyHeader(cgbFlag = 0x80).apply {
+            this[0x013F] = 'A'.code.toByte()
+            this[0x0140] = 'B'.code.toByte()
+            this[0x0141] = 'C'.code.toByte()
+            this[0x0142] = 'D'.code.toByte()
+        }
+
+        val result = RomHeaderScanner.parseHeader(header, "gb", "ColorGame.gb")
+
+        assertEquals("TEST", result.title)
+    }
+
+    @Test
     fun detectsColorHardwareFromGbHeaderFlag() {
         val header = gameBoyHeader(cgbFlag = 0x80)
 
