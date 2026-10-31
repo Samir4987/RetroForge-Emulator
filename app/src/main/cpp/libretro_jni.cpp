@@ -206,6 +206,9 @@ void audio_sample(int16_t l,int16_t r) { pending_audio.push_back(l); pending_aud
 size_t audio_sample_batch(const int16_t* samples,size_t frames) { if(samples&&frames) send_audio(samples,frames*2); return frames; }
 void input_poll() {}
 int16_t input_state(unsigned, unsigned device, unsigned, unsigned id) {
+    // RETRO_DEVICE_ID_JOYPAD_MASK is 256. We advertise GET_INPUT_BITMASKS,
+    // so cores may request the complete mask instead of polling each button.
+    if(device==1&&id==256) return static_cast<int16_t>(joypad_mask);
     if(device==1&&id<16) return (joypad_mask&(1u<<id))?1:0;
     if(device==6) {
         if(id==0) return static_cast<int16_t>((pointer_x*2.f-1.f)*32767.f);
