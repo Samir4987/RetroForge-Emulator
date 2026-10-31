@@ -20,8 +20,6 @@ jobs:
     timeout-minutes: 120
 
     env:
-      ANDROID_HOME: ${{ runner.temp }}/android-sdk
-      ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
       ANDROID_NDK_VERSION: "29.0.14206865"
       BUILD_JOBS: "2"
 
@@ -41,6 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION"
           ./scripts/build-azahar-android.sh
 
