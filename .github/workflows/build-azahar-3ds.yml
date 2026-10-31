@@ -1,0 +1,54 @@
+name: Build Azahar Nintendo 3DS Libretro core
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/n3ds-android-integration
+    paths:
+      - "scripts/build-azahar-android.sh"
+      - ".github/workflows/build-azahar-3ds.yml"
+      - "docs/N3DS_AZAHAR_LIBRETRO_INTEGRATION.md"
+
+permissions:
+  contents: read
+
+jobs:
+  build-azahar-android-arm64:
+    name: Build and verify Azahar (Android ARM64-v8a)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    env:
+      ANDROID_HOME: ${{ runner.temp }}/android-sdk
+      ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
+      ANDROID_NDK_VERSION: "29.0.14206865"
+      BUILD_JOBS: "2"
+
+    steps:
+      - name: Checkout RetroForge
+        uses: actions/checkout@v5
+
+      - name: Install Android SDK, NDK and CMake
+        uses: android-actions/setup-android@v4
+        with:
+          packages: >-
+            platform-tools
+            ndk;29.0.14206865
+            cmake;3.31.6
+
+      - name: Build pinned Azahar Libretro core
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION"
+          ./scripts/build-azahar-android.sh
+
+      - name: Upload verified native core and license metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: azahar-libretro-android-arm64
+          path: .build/azahar-artifacts/arm64-v8a/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
