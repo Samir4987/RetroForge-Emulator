@@ -128,7 +128,7 @@ fun EmulatorScreen(
             val system = RetroSystem.entries.firstOrNull {
                 it.code.equals(game.system, ignoreCase = true)
             }
-            val coreSpec = system?.let(LibretroCoreSpec::forSystem)
+            val coreSpec = system?.let { LibretroCoreSpec.forSystem(it) }
             if (system != null && system in setOf(RetroSystem.GB, RetroSystem.GBC, RetroSystem.GBA) &&
                 romBytes != null && romBytes.isNotEmpty() && coreSpec != null
             ) {
