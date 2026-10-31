@@ -127,8 +127,22 @@ class LibretroRuntime(
 
     override fun onNativeAudioSamples(interleavedStereoPcm: ShortArray) {
         val track = audioTrack ?: return
-        if (interleavedStereoPcm.isNotEmpty()) {
-            track.write(interleavedStereoPcm, 0, interleavedStereoPcm.size, AudioTrack.WRITE_NON_BLOCKING)
+        if (interleavedStereoPcm.isEmpty()) return
+
+        // AudioTrack's non-blocking write may accept only part of a frame's PCM.
+        // The previous implementation discarded the unwritten tail, causing
+        // avoidable audio gaps. The emulator advances on a background dispatcher,
+        // so use a blocking stream write to preserve sample order and continuity.
+        var offset = 0
+        while (offset < interleavedStereoPcm.size && audioTrack === track) {
+            val written = track.write(
+                interleavedStereoPcm,
+                offset,
+                interleavedStereoPcm.size - offset,
+                AudioTrack.WRITE_BLOCKING
+            )
+            if (written <= 0) break
+            offset += written
         }
     }
 
