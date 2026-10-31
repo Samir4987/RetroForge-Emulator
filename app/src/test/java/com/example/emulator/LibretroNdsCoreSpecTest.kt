@@ -16,9 +16,9 @@ class LibretroNdsCoreSpecTest {
         assertEquals(setOf("nds", "ds", "dsi", "srl"), spec.extensions)
 
         spec.extensions.forEach { extension ->
-            assertEquals(RetroSystem.NDS, LibretroCoreSpec.forExtension(extension))
+            assertEquals(RetroSystem.NDS, LibretroCoreSpec.forExtension(extension)?.system)
             assertEquals(RetroSystem.NDS, RetroSystem.fromExtension(extension))
-            assertEquals(RetroSystem.NDS, LibretroCoreSpec.forExtension(".$extension".uppercase()))
+            assertEquals(RetroSystem.NDS, LibretroCoreSpec.forExtension(".$extension".uppercase())?.system)
         }
     }
 
