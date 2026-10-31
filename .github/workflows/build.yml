@@ -4,7 +4,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master, feature/gba-core-integration]
+    branches: [main, master, feature/gba-core-integration, feature/gb-gbc-runtime-audit-fixes]
   pull_request:
 
 permissions:
@@ -155,6 +155,13 @@ jobs:
         run: |
           set -euxo pipefail
           ./gradlew --no-daemon :app:testDebugUnitTest
+
+      - name: Build and package pinned mGBA Libretro core
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export PATH="$ANDROID_SDK_ROOT/cmake/3.22.1/bin:$PATH"
+          bash scripts/build-mgba-android.sh
 
       - name: Build debug APK
         shell: bash
