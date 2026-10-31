@@ -41,7 +41,7 @@ jobs:
           set -euxo pipefail
           export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION"
-          ./scripts/build-azahar-android.sh
+          bash ./scripts/build-azahar-android.sh
 
       - name: Upload verified native core and license metadata
         uses: actions/upload-artifact@v4
