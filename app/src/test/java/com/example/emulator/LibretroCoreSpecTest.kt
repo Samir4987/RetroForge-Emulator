@@ -7,16 +7,16 @@ import org.junit.Test
 
 class LibretroCoreSpecTest {
     @Test
-    fun gbCandidateUsesSkyEmuAndOnlyGbExtension() {
+    fun gbCandidateUsesMgbaAndOnlyGbExtension() {
         val spec = LibretroCoreSpec.forSystem(RetroSystem.GB)
         assertNotNull(spec)
-        assertEquals("skyemu_libretro_android.so", spec?.libraryFileName)
-        assertEquals("https://github.com/libretro/SkyEmu", spec?.upstreamUrl)
+        assertEquals("mgba_libretro_android.so", spec?.libraryFileName)
+        assertEquals("https://github.com/libretro/mgba", spec?.upstreamUrl)
         assertEquals(setOf("gb"), spec?.extensions)
     }
 
     @Test
-    fun gbcCandidateUsesSkyEmuAndOnlyGbcExtension() {
+    fun gbcCandidateUsesMgbaAndOnlyGbcExtension() {
         val spec = LibretroCoreSpec.forSystem(RetroSystem.GBC)
         assertNotNull(spec)
         assertEquals("skyemu_libretro_android.so", spec?.libraryFileName)
