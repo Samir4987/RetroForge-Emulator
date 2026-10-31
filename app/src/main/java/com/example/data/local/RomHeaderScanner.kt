@@ -78,11 +78,13 @@ object RomHeaderScanner {
     }
 
     fun parseHeader(bytes: ByteArray, extension: String, fileName: String): ScanResult {
-        return when (extension) {
-            "gb", "gbc" -> parseGbGbcHeader(bytes, extension, fileName)
+        // Normalize caller-provided extensions just as scanUri normalizes file names.
+        val normalizedExtension = extension.lowercase().trim().trimStart('.')
+        return when (normalizedExtension) {
+            "gb", "gbc" -> parseGbGbcHeader(bytes, normalizedExtension, fileName)
             "gba" -> parseGbaHeader(bytes, fileName)
             "nds", "ds" -> parseNdsHeader(bytes, fileName)
-            "n64", "z64", "v64" -> parseN64Header(bytes, extension, fileName)
+            "n64", "z64", "v64" -> parseN64Header(bytes, normalizedExtension, fileName)
             else -> {
                 // Infer from header signature or file name
                 if (bytes.size > 0x134 && (bytes[0x0104].toInt() and 0xFF) == 0xCE) {
@@ -90,7 +92,7 @@ object RomHeaderScanner {
                 } else if (bytes.size > 0xB2 && (bytes[0x00B2].toInt() and 0xFF) == 0x96) {
                     parseGbaHeader(bytes, fileName)
                 } else {
-                    fallbackResult(fileName, extension)
+                    fallbackResult(fileName, normalizedExtension)
                 }
             }
         }
