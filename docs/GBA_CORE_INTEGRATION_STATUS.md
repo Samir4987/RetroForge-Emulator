@@ -35,24 +35,21 @@ native emulation path is developed and tested.
 
 ## CI validation achieved
 
-Successful workflow run:
-https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41184809077
+Latest successful workflow run:
+https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41185344674
 
-Validated commit: `d48708ca8248ab9d080a466fb0d6fec4a17f71a9`
+Validated commit: `f8dc93fa5aaeb80a368dc29d841d55857e4e6fef`
 
-The completed workflow passed all of these steps:
+All 16 build steps completed successfully, including Firebase-backed unit
+tests, pinned mGBA native build/package, debug APK assembly, APK verification,
+and artifact upload.
 
-1. Firebase-backed unit tests.
-2. Pinned mGBA Libretro native build and packaging step.
-3. Android debug APK assembly.
-4. APK existence verification.
-5. Workflow artifact upload.
+Artifact: `RetroForge-Android-APK` (GitHub Actions artifact ID
+`13036823451`, approximately 30 MiB; available from the workflow run page).
 
-Artifact: `RetroForge-Android-APK` (workflow artifact; expires 2027-01-29).
-
-This validates the CI build and packaging path for that commit. It does not
-prove that the APK installs or that a game boots, renders, plays audio, or
-responds to input on a physical Android device.
+This validates the CI build and packaging path. It does not prove that the APK
+installs or that a game boots, renders, plays audio, or responds to input on a
+physical Android device.
 
 ## Remaining validation before calling GBA playable
 
@@ -88,9 +85,9 @@ responds to input on a physical Android device.
 
 ## Current status
 
-The pinned mGBA Android core and debug APK now build successfully in GitHub
-Actions. Unit tests also pass in that run. The project has a native frontend
-path for loading GBA ROMs, advancing frames, presenting video, routing audio,
-and forwarding controller input. However, no Android device gameplay test has
+The pinned mGBA Android core and debug APK build successfully in GitHub
+Actions, and the unit-test step passes. The project has a native frontend path
+for loading GBA ROMs, advancing frames, presenting video, routing audio, and
+forwarding controller input. However, no Android device gameplay test has
 been completed, so this is a successful build milestone—not yet a verified
 playable GBA emulator.
