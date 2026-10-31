@@ -39,7 +39,7 @@ class RomHeaderScannerTest {
     fun parseGbcHeader_detectsColorFlag() {
         val bytes = ByteArray(512)
         bytes[0x0104] = 0xCE.toByte()
-        val titleBytes = "CRYSTAL CAVERN\u0000\u0000".toByteArray(StandardCharsets.US_ASCII)
+        val titleBytes = "MARIO LAND\u0000\u0000".toByteArray(StandardCharsets.US_ASCII)
         System.arraycopy(titleBytes, 0, bytes, 0x0134, 16)
 
         // Set CGB flag 0x80 (GBC compatible)
