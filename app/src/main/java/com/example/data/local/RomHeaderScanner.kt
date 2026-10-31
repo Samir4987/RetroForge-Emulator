@@ -40,9 +40,7 @@ object RomHeaderScanner {
             }
 
             val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            val headerBytes = ByteArray(1024)
-            val bytesRead = inputStream.read(headerBytes)
-            inputStream.close()
+            val (headerBytes, bytesRead) = inputStream.use { readHeaderBytes(it) }
 
             if (bytesRead < 64) return null
             if (fileSize <= 0) fileSize = bytesRead.toLong()
@@ -75,6 +73,30 @@ object RomHeaderScanner {
         } catch (_: Exception) {
             null
         }
+    }
+
+    internal fun readHeaderBytes(inputStream: InputStream): Pair<ByteArray, Int> {
+        val buffer = ByteArray(1024)
+        var totalBytesRead = 0
+
+        while (totalBytesRead < buffer.size) {
+            val bytesRead = inputStream.read(
+                buffer,
+                totalBytesRead,
+                buffer.size - totalBytesRead
+            )
+            if (bytesRead < 0) break
+            if (bytesRead == 0) {
+                // Avoid a tight loop for unusual streams that temporarily return no data.
+                val nextByte = inputStream.read()
+                if (nextByte < 0) break
+                buffer[totalBytesRead++] = nextByte.toByte()
+            } else {
+                totalBytesRead += bytesRead
+            }
+        }
+
+        return buffer to totalBytesRead
     }
 
     fun parseHeader(bytes: ByteArray, extension: String, fileName: String): ScanResult {
