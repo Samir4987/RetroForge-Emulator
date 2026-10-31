@@ -4,7 +4,6 @@ import com.example.emulator.RetroSystem
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.io.ByteArrayInputStream
-import java.io.InputStream
 
 class RomHeaderScannerTest {
     @Test
@@ -32,6 +31,22 @@ class RomHeaderScannerTest {
         val header = gameBoyHeader(cgbFlag = 0x80)
 
         val result = RomHeaderScanner.parseHeader(header, "gb", "ColorGame.gb")
+
+        assertEquals(RetroSystem.GBC, result.system)
+    }
+
+    @Test
+    fun detectsColorOnlyHeaderFlag() {
+        val header = gameBoyHeader(cgbFlag = 0xC0)
+
+        val result = RomHeaderScanner.parseHeader(header, "gb", "ColorOnlyGame.gb")
+
+        assertEquals(RetroSystem.GBC, result.system)
+    }
+
+    @Test
+    fun shortGbcHeaderUsesNormalizedExtensionFallback() {
+        val result = RomHeaderScanner.parseHeader(ByteArray(0x80), ".GBC", "Short.gbc")
 
         assertEquals(RetroSystem.GBC, result.system)
     }
