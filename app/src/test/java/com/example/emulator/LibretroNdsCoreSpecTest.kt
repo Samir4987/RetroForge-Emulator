@@ -45,4 +45,30 @@ class LibretroNdsCoreSpecTest {
         val expected = (1 shl 0) or (1 shl 3) or (1 shl 4) or (1 shl 7) or (1 shl 8) or (1 shl 10)
         assertEquals(expected, toLibretroJoypadMask(input))
     }
+    @Test
+    fun allNdsJoypadButtonsMapToLibretroIdsAndIgnoreNonDsControls() {
+        val allDsButtons = EmulatorInputState(
+            dpadUp = true,
+            dpadDown = true,
+            dpadLeft = true,
+            dpadRight = true,
+            buttonA = true,
+            buttonB = true,
+            buttonX = true,
+            buttonY = true,
+            triggerL = true,
+            triggerR = true,
+            start = true,
+            select = true
+        )
+        assertEquals(0xFFF, toLibretroJoypadMask(allDsButtons))
+
+        val nonDsControlsOnly = EmulatorInputState(
+            triggerZ = true,
+            stickX = 1f,
+            stickY = -1f
+        )
+        assertEquals(0, toLibretroJoypadMask(nonDsControlsOnly))
+    }
+
 }
