@@ -4,7 +4,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master, feature/gba-core-integration]
+    branches: [main, master, feature/gba-core-integration, fix/gba-robolectric-sdk-35]
   pull_request:
 
 permissions:
@@ -29,6 +29,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Set up Node.js for Firebase Emulator Suite
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
 
       - name: Install Android SDK
         uses: android-actions/setup-android@v4
@@ -156,7 +161,11 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ./gradlew --no-daemon :app:testDebugUnitTest
+          npx --yes firebase-tools@13.35.1 emulators:exec \
+            --project demo-no-project \
+            --only auth,firestore \
+            --non-interactive \
+            "./gradlew --no-daemon :app:testDebugUnitTest"
 
       - name: Build and package pinned mGBA Libretro core
         shell: bash
