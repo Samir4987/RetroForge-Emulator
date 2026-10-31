@@ -26,10 +26,12 @@ Do not merge to `main`; AI 1 handles merges.
 
 ## Validation status
 
-- GitHub Actions run [#110](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/40875706361)
-  passed on commit `3c20f68ceb177b54d569b1ea9b7727d6355f6601` (2026-10-29).
-  The run successfully built and packaged the melonDS DS core, ran the NDS
-  integration unit tests, assembled the debug APK, and uploaded the APK artifact.
+- GitHub Actions run [#119](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41185519629)
+  passed on commit `f577e2a5fb0a67e0236a8f3c034c61d7a3fce385` (2026-10-31).
+  All 17 build job steps completed successfully, including the melonDS DS core
+  build/package, NDS integration unit tests, debug APK assembly, APK existence
+  verification, and artifact upload. Earlier baseline run [#110](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/40875706361)
+  also passed on 2026-10-29.
 - This CI result verifies compilation, packaging, and the listed unit tests; it
   does not prove that a ROM boots or that gameplay callbacks work on a device.
 - No physical Android device has been tested by this code change yet.
