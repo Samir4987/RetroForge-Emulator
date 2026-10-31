@@ -48,12 +48,12 @@ Azahar's repository declares GPL-3.0. Before distributing an APK containing its 
 
 Do not bundle commercial game images, copyrighted console firmware, or keys. Any optional system data must be obtained and supplied lawfully by the user; document requirements without distributing those files.
 
-## Acceptance gates
+## Implemented in RetroForge\n\n- Added `RetroSystem.N3DS` metadata with dual-screen and analog-stick flags. The top-screen 400×240 dimensions are metadata only; the bottom-screen layout still needs frontend work.\n- Registered the pinned Azahar Libretro candidate as `azahar_libretro.so` for `.3ds`, `.cci`, and `.cxi` files. This is a candidate registration, not proof the binary is packaged or playable.\n- Added unit tests for system lookup, extension lookup, and dual-screen/input metadata.\n- Added `scripts/build-azahar-android.sh` and a separate, manually dispatchable / branch-scoped GitHub Actions workflow. The build script pins source and recursively updates submodules, then checks required Libretro exports before uploading the library with license and revision metadata.\n\n## Acceptance gates
 
-- [ ] Build the pinned Azahar Libretro core for Android ARM64-v8a in CI.
+- [ ] Build the pinned Azahar Libretro core for Android ARM64-v8a in CI (workflow and script added; first run still required).
 - [ ] Verify the produced shared object exports the required Libretro entry points.
 - [ ] Package it under the app's native-library directory and confirm ABI loading.
-- [ ] Add a dedicated Nintendo 3DS system/core spec and tests without mapping unknown systems to 3DS.
+- [x] Add a dedicated Nintendo 3DS system/core spec and unit tests without mapping unknown systems to 3DS.
 - [ ] Implement real video, audio, input, dual-screen layout, and touch callbacks.
 - [ ] Test legal homebrew content on a physical Android device.
 - [ ] Verify load failure, unload, pause/resume, repeated launch/close, and demo fallback.
