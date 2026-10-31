@@ -38,6 +38,8 @@ unsigned video_width = 0;
 unsigned video_height = 0;
 unsigned pixel_format = 0;
 std::atomic<uint16_t> joypad_mask{0};
+std::atomic<int16_t> analog_left_x{0}, analog_left_y{0};
+std::atomic<int16_t> analog_right_x{0}, analog_right_y{0};
 constexpr size_t kAudioCapacityFrames = 16384;
 std::array<int16_t, kAudioCapacityFrames * 2> audio_ring{};
 size_t audio_read_frame = 0;
@@ -173,9 +175,26 @@ size_t audio_sample_batch(const int16_t* samples, size_t frames) {
 }
 void input_poll() {}
 int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
-    // RETRO_DEVICE_JOYPAD = 1; the standard joypad IDs occupy bits 0..15.
-    if (port != 0 || device != 1 || index != 0 || id >= 16) return 0;
-    return (joypad_mask.load(std::memory_order_relaxed) & (uint16_t{1} << id)) != 0 ? 1 : 0;
+    if (port != 0) return 0;
+
+    // RETRO_DEVICE_JOYPAD = 1; standard Libretro joypad IDs occupy bits 0..15.
+    if (device == 1 && index == 0 && id < 16) {
+        return (joypad_mask.load(std::memory_order_relaxed) & (uint16_t{1} << id)) != 0 ? 1 : 0;
+    }
+
+    // RETRO_DEVICE_ANALOG = 5; index 0 is left stick, index 1 is right stick.
+    // Axis IDs 0/1 are X/Y. The N64 C-buttons are supplied on the right stick.
+    if (device == 5 && id < 2) {
+        if (index == 0) {
+            return id == 0 ? analog_left_x.load(std::memory_order_relaxed)
+                           : analog_left_y.load(std::memory_order_relaxed);
+        }
+        if (index == 1) {
+            return id == 0 ? analog_right_x.load(std::memory_order_relaxed)
+                           : analog_right_y.load(std::memory_order_relaxed);
+        }
+    }
+    return 0;
 }
 
 template <typename T> bool symbol(T& out, const char* name) {
@@ -215,6 +234,10 @@ void close_core() {
         video_height = 0;
         pixel_format = 0;
         joypad_mask.store(0, std::memory_order_relaxed);
+        analog_left_x.store(0, std::memory_order_relaxed);
+        analog_left_y.store(0, std::memory_order_relaxed);
+        analog_right_x.store(0, std::memory_order_relaxed);
+        analog_right_y.store(0, std::memory_order_relaxed);
     }
     {
         std::lock_guard<std::mutex> lock(audio_mutex);
@@ -367,6 +390,18 @@ Java_com_example_emulator_LibretroNative_nativeCopyVideoFrame(JNIEnv* env, jobje
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_emulator_LibretroNative_nativeSetJoypadState(JNIEnv*, jobject, jint mask) {
     joypad_mask.store(static_cast<uint16_t>(mask & 0xffff), std::memory_order_relaxed);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_emulator_LibretroNative_nativeSetAnalogState(
+        JNIEnv*, jobject, jint left_x, jint left_y, jint right_x, jint right_y) {
+    const auto clamp_axis = [](jint value) {
+        return static_cast<int16_t>(std::clamp(value, -32768, 32767));
+    };
+    analog_left_x.store(clamp_axis(left_x), std::memory_order_relaxed);
+    analog_left_y.store(clamp_axis(left_y), std::memory_order_relaxed);
+    analog_right_x.store(clamp_axis(right_x), std::memory_order_relaxed);
+    analog_right_y.store(clamp_axis(right_y), std::memory_order_relaxed);
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
