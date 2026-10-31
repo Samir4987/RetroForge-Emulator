@@ -117,32 +117,32 @@ fun EmulatorScreen(
         }
     }
 
-    // Prefer the real GBA core only when both a ROM and a packaged core are available.
-    // Otherwise the existing demo/simulation remains the fallback.
+    // Prefer a real GB/GBC/GBA core only when both a ROM and a packaged core
+    // are available. Otherwise preserve the existing demo/simulation fallback.
     var frameTicker by remember { mutableStateOf(0L) }
     LaunchedEffect(game) {
         var runtime: LibretroRuntime? = null
         var temporaryRom: File? = null
         try {
             val romBytes = game.romBytes
-            val coreSpec = LibretroCoreSpec.forSystem(RetroSystem.GBA)
-            if (game.system.equals("GBA", ignoreCase = true) &&
+            val system = RetroSystem.fromCode(game.system)
+            val coreSpec = LibretroCoreSpec.forSystem(system)
+            if (system in setOf(RetroSystem.GB, RetroSystem.GBC, RetroSystem.GBA) &&
                 romBytes != null && romBytes.isNotEmpty() && coreSpec != null
             ) {
+                val extension = coreSpec.extensions.first()
+                val romFile = File.createTempFile("retroforge-" + system.code.lowercase() + "-", "." + extension, context.cacheDir)
+                temporaryRom = romFile
+                romFile.writeBytes(romBytes)
                 val frontend = File(context.applicationInfo.nativeLibraryDir, "libretroforge_libretro.so")
                 val candidate = LibretroRuntime(frontend, coreSpec)
-                if (candidate.isAvailable) {
-                    val romFile = File.createTempFile("retroforge-gba-", ".gba", context.cacheDir)
-                    temporaryRom = romFile
-                    romFile.writeBytes(romBytes)
-                    if (candidate.loadRom(romFile).isSuccess) {
-                        runtime = candidate
-                        isUsingLibretro = true
-                    } else {
-                        candidate.close()
-                        romFile.delete()
-                        temporaryRom = null
-                    }
+                if (candidate.isAvailable && candidate.loadRom(romFile).isSuccess) {
+                    runtime = candidate
+                    isUsingLibretro = true
+                } else {
+                    candidate.close()
+                    romFile.delete()
+                    temporaryRom = null
                 }
             }
 
