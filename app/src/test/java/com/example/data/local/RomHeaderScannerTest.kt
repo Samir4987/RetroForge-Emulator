@@ -3,6 +3,8 @@ package com.example.data.local
 import com.example.emulator.RetroSystem
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.io.ByteArrayInputStream
+import java.io.InputStream
 
 class RomHeaderScannerTest {
     @Test
@@ -32,6 +34,21 @@ class RomHeaderScannerTest {
         val result = RomHeaderScanner.parseHeader(header, "gb", "ColorGame.gb")
 
         assertEquals(RetroSystem.GBC, result.system)
+    }
+
+    @Test
+    fun readsHeaderUntilEofWhenStreamReturnsSmallChunks() {
+        val bytes = ByteArray(0x180) { it.toByte() }
+        val chunkedStream = object : ByteArrayInputStream(bytes) {
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                return super.read(buffer, offset, minOf(length, 7))
+            }
+        }
+
+        val (header, bytesRead) = RomHeaderScanner.readHeaderBytes(chunkedStream)
+
+        assertEquals(bytes.size, bytesRead)
+        assertEquals(bytes.toList(), header.take(bytes.size))
     }
 
     private fun gameBoyHeader(cgbFlag: Int): ByteArray =
