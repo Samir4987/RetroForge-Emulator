@@ -125,9 +125,11 @@ fun EmulatorScreen(
         var temporaryRom: File? = null
         try {
             val romBytes = game.romBytes
-            val system = RetroSystem.fromCode(game.system)
-            val coreSpec = LibretroCoreSpec.forSystem(system)
-            if (system in setOf(RetroSystem.GB, RetroSystem.GBC, RetroSystem.GBA) &&
+            val system = RetroSystem.entries.firstOrNull {
+                it.code.equals(game.system, ignoreCase = true)
+            }
+            val coreSpec = system?.let(LibretroCoreSpec::forSystem)
+            if (system != null && system in setOf(RetroSystem.GB, RetroSystem.GBC, RetroSystem.GBA) &&
                 romBytes != null && romBytes.isNotEmpty() && coreSpec != null
             ) {
                 val extension = coreSpec.extensions.first()
