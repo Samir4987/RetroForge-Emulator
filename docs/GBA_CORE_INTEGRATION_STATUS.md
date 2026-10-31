@@ -2,84 +2,95 @@
 
 ## Scope and branch safety
 
-This work is isolated to `feature/gba-core-integration`. Do not merge it into
-`main` or the existing integration branch without explicit approval.
+This work is isolated to `fix/gba-robolectric-sdk-35`, based on
+`feature/gba-core-integration`. Do not merge it into the integration branch
+without explicit approval.
 
-The existing demo/simulation path should remain available while the native
-emulation path is developed and tested.
+The existing demo/simulation path remains available as a fallback while the
+native emulation path is developed and tested.
 
-## Current state observed in the repository
+## Current implementation
 
-- The GBA candidate now points to `mgba_libretro_android.so` from the
-  [Libretro mGBA core](https://github.com/libretro/mgba). Libretro documents
-  mGBA as an MPL-2.0-licensed GBA core that also supports GB/GBC and accepts
-  `.gba` content: https://docs.libretro.com/library/mgba/.
-- The candidate entry is metadata only; the new `scripts/build-mgba-android.sh` builds the pinned Libretro mGBA revision `7a12d6d4b9acb14c0ae62c9166b6a2f3d08007f6` for `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64`, then stages the core libraries and MPL-2.0 license for APK packaging. The Android CI workflow now invokes this script before `assembleDebug`; its first run must succeed before treating the build path as validated.
-- `LibretroRuntime` checks for both the frontend and core shared libraries,
-  loads a ROM, and can call the native frame runner.
-- `libretro_jni.cpp` dynamically resolves the expected Libretro API symbols
-  and calls `retro_run()`.
-- The native video callback now validates frame dimensions and pitch, converts
-  Libretro 0RGB1555, XRGB8888, and RGB565 frames to bounded ARGB pixels, and
-  retains the last frame when a core submits a null duplicate frame.
-- `LibretroNative` exposes frame dimensions/pixel copying, and
-  `LibretroRuntime.readVideoFrame()` can return the latest frame as an Android
-  bitmap. This capture path is not yet wired into `EmulatorScreen`'s renderer.
-- Native audio callbacks now enqueue stereo PCM in a fixed-capacity ring buffer;
-  Kotlin drains it through a background `AudioTrack` worker using the core's
-  reported sample rate. The queue drops oldest samples under pressure to bound
-  latency, and shutdown stops the worker before unloading the native core.
-- The input callback reads a thread-safe player-one joypad mask, and Kotlin maps
-  the app's A/B/X/Y, D-pad, Start/Select, and L/R state to standard Libretro IDs.
-- `EmulatorScreen` now attempts real GBA playback only when a GBA ROM byte array
-  and both required native libraries are present. It routes controller state,
-  frames, and audio through the runtime, hides simulation-only save-state
-  controls during real-core playback, and falls back to demo mode when setup or
-  frame execution fails.
-- A successful `retro_load_game()` only confirms that the core accepted the
-  ROM. It does not confirm that the frontend can present frames or route input
-  and audio.
+- The GBA core candidate is Libretro mGBA, licensed under MPL-2.0:
+  https://github.com/libretro/mgba
+- `scripts/build-mgba-android.sh` builds the pinned mGBA revision
+  `7a12d6d4b9acb14c0ae62c9166b6a2f3d08007f6` for
+  `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64`, then stages the
+  shared libraries and license for APK packaging.
+- The Android CI workflow runs unit tests, builds/packages the native core,
+  assembles the debug APK, verifies it, and uploads it as a workflow artifact.
+- `libretro_jni.cpp` dynamically resolves the Libretro API, loads a ROM,
+  advances frames, maps joypad input, converts 0RGB1555/XRGB8888/RGB565 video
+  frames to bounded ARGB pixels, and buffers stereo PCM in a fixed-capacity
+  ring buffer.
+- `LibretroRuntime` loads the frontend and selected core, validates ROM
+  extensions, advances frames, exposes the latest video frame as a Bitmap,
+  forwards controller state, and manages the audio output worker.
+- `EmulatorScreen` attempts the real GBA path only when a GBA ROM byte array
+  and both native libraries are present. It forwards input, advances frames
+  away from the Compose UI thread, presents captured frames, and falls back to
+  the demo engine if native startup or frame execution fails.
+- Simulation save-state controls are hidden during real-core playback; native
+  mGBA save-state serialization is not implemented by this integration.
 
-## Required work before calling GBA integration playable
+## CI validation achieved
 
-1. Validate the pinned mGBA CMake build script and resulting libraries for all
-   packaged Android ABIs in CI. The core revision is pinned to
-   `7a12d6d4b9acb14c0ae62c9166b6a2f3d08007f6`; do not assume the build works
-   until CI has completed successfully and the APK contains each expected core.
-2. Verify the conditional GBA screen integration on a device, including frame
-   pacing, audio stability, pause/resume, and cleanup when leaving the screen.
-3. Route audio samples through an Android audio output path with bounded
-   buffering and correct sample-rate handling.
-4. Verify touch/controller release behavior with an actual GBA core and ensure
-   no input remains stuck after pause, failure, or screen exit.
-5. Verify core/ROM lifecycle cleanup, failure paths, and repeated game loads.
-6. Add tests or a reproducible manual test procedure using legally distributable
-   homebrew test ROMs. Do not bundle commercial games or proprietary BIOS files.
-7. Run the Android build and inspect the complete CI result. A passing APK build
-   alone is not evidence that a real GBA core runs correctly on a device.
+Successful workflow run:
+https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41184809077
+
+Validated commit: `d48708ca8248ab9d080a466fb0d6fec4a17f71a9`
+
+The completed workflow passed all of these steps:
+
+1. Firebase-backed unit tests.
+2. Pinned mGBA Libretro native build and packaging step.
+3. Android debug APK assembly.
+4. APK existence verification.
+5. Workflow artifact upload.
+
+Artifact: `RetroForge-Android-APK` (workflow artifact; expires 2027-01-29).
+
+This validates the CI build and packaging path for that commit. It does not
+prove that the APK installs or that a game boots, renders, plays audio, or
+responds to input on a physical Android device.
+
+## Remaining validation before calling GBA playable
+
+1. Install the generated APK on an Android device or a compatible Android
+   emulator and confirm the app launches.
+2. Use a legally distributable GBA homebrew test ROM; verify ROM loading,
+   frame presentation, frame pacing, audio, and all controller buttons.
+3. Verify pause/resume, leaving the emulator screen, repeated ROM loads, and
+   cleanup after core errors.
+4. Confirm the packaged mGBA library is present for the target device ABI.
+5. Add reproducible automated smoke tests where feasible. Do not bundle
+   commercial games or proprietary BIOS files.
+6. Implement and test real-core save states separately; current save-state UI
+   behavior is not evidence of mGBA serialization support.
 
 ## Validation checklist
 
-- [x] GBA core candidate selected: mGBA Libretro, MPL-2.0 (source/version not pinned yet)
-- [x] mGBA source revision pinned; CI build/package step added (build result pending)
-- [ ] Core built for each packaged Android ABI
-- [ ] Homebrew ROM loads and advances frames on-device
-- [x] Native video callback captures bounded ARGB frames and exposes them to Kotlin
-- [x] UI frame loop displays captured core frames when a real GBA core is available
-- [ ] Real core video is verified on-device
-- [x] Native stereo PCM queue and Android AudioTrack output path implemented
-- [ ] Audio output is audible and stable on-device
-- [x] Native Libretro joypad mask and Kotlin button-ID mapping implemented
-- [x] UI frame loop forwards controller state to an available GBA core
-- [ ] UI controller state changes gameplay and releases correctly on-device
-- [ ] Closing/reloading a ROM releases native resources safely
-- [ ] Existing demo mode still works
-- [ ] CI build and device smoke-test results recorded
+- [x] Select mGBA Libretro as the GBA core candidate.
+- [x] Pin upstream mGBA source revision.
+- [x] Build mGBA for Android ABIs in CI.
+- [x] Package native core libraries into the debug APK.
+- [x] Build and verify the Android debug APK in CI.
+- [x] Upload the APK as a workflow artifact.
+- [x] Implement native video capture and Kotlin Bitmap access.
+- [x] Wire captured video frames into the GBA screen loop.
+- [x] Implement bounded stereo PCM buffering and AudioTrack output.
+- [x] Implement Libretro joypad mapping and forward controller state.
+- [ ] Verify installation and real GBA gameplay on an Android device.
+- [ ] Verify audible/stable audio and responsive controls on-device.
+- [ ] Verify pause/resume and lifecycle cleanup on-device.
+- [ ] Implement and verify native mGBA save states.
+- [ ] Record a repeatable gameplay smoke-test result.
 
-## Current validation status
+## Current status
 
-Native video capture, bounded stereo audio buffering/output, joypad mapping, conditional
-GBA screen routing, and unit tests for the input mapping/core candidate have been
-committed on this branch. A pinned mGBA Android build script and CI packaging step
-have now been added; their first successful run and APK contents are still pending.
-No device-level GBA playback has been verified.
+The pinned mGBA Android core and debug APK now build successfully in GitHub
+Actions. Unit tests also pass in that run. The project has a native frontend
+path for loading GBA ROMs, advancing frames, presenting video, routing audio,
+and forwarding controller input. However, no Android device gameplay test has
+been completed, so this is a successful build milestone—not yet a verified
+playable GBA emulator.
