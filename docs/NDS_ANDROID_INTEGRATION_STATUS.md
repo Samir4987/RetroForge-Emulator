@@ -14,6 +14,8 @@ Do not merge to `main`; AI 1 handles merges.
 - Extends the JNI bridge with video conversion to ARGB_8888, interleaved stereo
   PCM callbacks, joypad/pointer input, core option defaults, system/assets/save
   directory callbacks, and optional Libretro serialize/unserialize entry points.
+- Preserves audio sample order when writing PCM to Android `AudioTrack`; the
+  callback drains partial blocking writes rather than dropping unwritten samples.
 - Routes imported NDS ROM bytes through the real core runtime in `EmulatorScreen`.
   The core's 256x384 vertically stacked frame is split into top and bottom
   256x192 bitmaps for the dual-screen Compose view.
@@ -32,6 +34,11 @@ Do not merge to `main`; AI 1 handles merges.
   build/package, NDS integration unit tests, debug APK assembly, APK existence
   verification, and artifact upload. Earlier baseline run [#110](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/40875706361)
   also passed on 2026-10-29.
+- CI run [#128](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41186555037)
+  passed on commit `f98c8c194775ca5ac9ee036b277c4f3a92aba6da`, including the
+  native joypad-bitmask query fix. Run [#123](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41186170992)
+  also passed on `0baa2affae73f2faac2de0f36c201b0f3e8ba881`.
+- The current audio continuity change is being validated by CI run [#129](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41201246426).
 - This CI result verifies compilation, packaging, and the listed unit tests; it
   does not prove that a ROM boots or that gameplay callbacks work on a device.
 - No physical Android device has been tested by this code change yet.
