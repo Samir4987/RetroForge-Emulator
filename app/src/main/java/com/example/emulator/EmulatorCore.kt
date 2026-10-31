@@ -71,6 +71,10 @@ class EmulatorCore(
     }
 
     fun loadGame(game: RetroGame) {
+        // A previous screen may have paused the shared engine before returning to the library.
+        // Every newly selected game must start in a running state with rewind disabled.
+        isPaused = false
+        isRewinding = false
         currentGame = game
         currentSystem = RetroSystem.fromCode(game.system)
         recreateBuffers()
