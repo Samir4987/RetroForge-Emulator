@@ -18,14 +18,14 @@ data class LibretroCoreSpec(
         val supportedCandidates: List<LibretroCoreSpec> = listOf(
             LibretroCoreSpec(
                 system = RetroSystem.GB,
-                libraryFileName = "skyemu_libretro_android.so",
-                upstreamUrl = "https://github.com/libretro/SkyEmu",
+                libraryFileName = "mgba_libretro_android.so",
+                upstreamUrl = "https://github.com/libretro/mgba",
                 extensions = setOf("gb")
             ),
             LibretroCoreSpec(
                 system = RetroSystem.GBC,
-                libraryFileName = "skyemu_libretro_android.so",
-                upstreamUrl = "https://github.com/libretro/SkyEmu",
+                libraryFileName = "mgba_libretro_android.so",
+                upstreamUrl = "https://github.com/libretro/mgba",
                 extensions = setOf("gbc")
             ),
             LibretroCoreSpec(
