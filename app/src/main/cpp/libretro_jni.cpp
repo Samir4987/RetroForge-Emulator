@@ -113,14 +113,115 @@ RunFrame run_frame = nullptr;
 UnloadGame unload_game = nullptr;
 GetAvInfo get_av_info = nullptr;
 
+bool make_gles_current() {
+    return egl_display != EGL_NO_DISPLAY && egl_context != EGL_NO_CONTEXT &&
+           egl_surface != EGL_NO_SURFACE &&
+           eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context) == EGL_TRUE;
+}
+
+void release_gles_current() {
+    if (egl_display != EGL_NO_DISPLAY) {
+        eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    }
+}
+
+uintptr_t current_framebuffer() { return 0; }
+
+void* get_gl_proc_address(const char* name) {
+    return name ? reinterpret_cast<void*>(eglGetProcAddress(name)) : nullptr;
+}
+
+bool create_gles_context() {
+    if (hw_context_ready) return make_gles_current();
+    egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (egl_display == EGL_NO_DISPLAY || eglInitialize(egl_display, nullptr, nullptr) != EGL_TRUE) {
+        LOGE("Could not initialize EGL display (0x%x)", eglGetError());
+        return false;
+    }
+    if (eglBindAPI(EGL_OPENGL_ES_API) != EGL_TRUE) {
+        LOGE("Could not bind OpenGL ES API (0x%x)", eglGetError());
+        return false;
+    }
+
+    const EGLint config_attributes[] = {
+        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
+        EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
+        EGL_DEPTH_SIZE, 16, EGL_NONE
+    };
+    EGLConfig config = nullptr;
+    EGLint config_count = 0;
+    if (eglChooseConfig(egl_display, config_attributes, &config, 1, &config_count) != EGL_TRUE ||
+        config_count == 0) {
+        LOGE("No EGL config supports GLES3 pbuffer (0x%x)", eglGetError());
+        return false;
+    }
+
+    const EGLint surface_attributes[] = {
+        EGL_WIDTH, static_cast<EGLint>(kGlSurfaceSize),
+        EGL_HEIGHT, static_cast<EGLint>(kGlSurfaceSize), EGL_NONE
+    };
+    egl_surface = eglCreatePbufferSurface(egl_display, config, surface_attributes);
+    if (egl_surface == EGL_NO_SURFACE) {
+        LOGE("Could not create EGL pbuffer (0x%x)", eglGetError());
+        return false;
+    }
+
+    const EGLint context_attributes[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
+    egl_context = eglCreateContext(egl_display, config, EGL_NO_CONTEXT, context_attributes);
+    if (egl_context == EGL_NO_CONTEXT) {
+        LOGE("Could not create GLES3 context (0x%x)", eglGetError());
+        return false;
+    }
+    if (!make_gles_current()) {
+        LOGE("Could not make GLES3 context current (0x%x)", eglGetError());
+        return false;
+    }
+
+    hw_context_ready = true;
+    if (hw_render_callback.context_reset) hw_render_callback.context_reset();
+    return true;
+}
+
+void destroy_gles_context() {
+    if (egl_display == EGL_NO_DISPLAY) return;
+    if (make_gles_current() && hw_render_callback.context_destroy) {
+        hw_render_callback.context_destroy();
+    }
+    release_gles_current();
+    if (egl_context != EGL_NO_CONTEXT) eglDestroyContext(egl_display, egl_context);
+    if (egl_surface != EGL_NO_SURFACE) eglDestroySurface(egl_display, egl_surface);
+    egl_context = EGL_NO_CONTEXT;
+    egl_surface = EGL_NO_SURFACE;
+    eglTerminate(egl_display);
+    egl_display = EGL_NO_DISPLAY;
+    hw_context_ready = false;
+    hw_render_callback = HwRenderCallback{};
+}
+
 bool environment(unsigned command, void* data) {
-    // RETRO_ENVIRONMENT_SET_PIXEL_FORMAT = 10.
     if (command == 10 && data) {
         const auto format = *static_cast<PixelFormat*>(data);
         if (format.format > 2) return false;
         std::lock_guard<std::mutex> lock(media_mutex);
         video_pixel_format = format.format;
         return true;
+    }
+    if (command == kSetHwSharedContext) return true;
+    if (command == kGetPreferredHwRender && data) {
+        *static_cast<unsigned*>(data) = kHwContextOpenGles3;
+        return true;
+    }
+    if (command == kSetHwRender && data) {
+        auto* callback = static_cast<HwRenderCallback*>(data);
+        if (callback->context_type != kHwContextOpenGles3) {
+            LOGE("Unsupported Libretro hardware context type: %u", callback->context_type);
+            return false;
+        }
+        hw_render_callback = *callback;
+        callback->get_current_framebuffer = current_framebuffer;
+        callback->get_proc_address = get_gl_proc_address;
+        return create_gles_context();
     }
     return false;
 }
