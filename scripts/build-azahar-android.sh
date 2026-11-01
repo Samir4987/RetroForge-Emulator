@@ -89,7 +89,16 @@ if [[ -z "${readelf_tool}" ]]; then
   exit 1
 fi
 
-"${readelf_tool}" -h "${core_path}" | grep -E 'Class:|Machine:'
+elf_header="$("${readelf_tool}" -h "${core_path}")"
+grep -Eq 'Class:[[:space:]]+ELF64' <<<"${elf_header}" || {
+  echo "Azahar core is not a 64-bit ELF binary." >&2
+  exit 1
+}
+grep -Eq 'Machine:[[:space:]]+AArch64' <<<"${elf_header}" || {
+  echo "Azahar core is not an AArch64/arm64-v8a binary." >&2
+  exit 1
+}
+printf '%s\\n' "${elf_header}" | grep -E 'Class:|Machine:'
 symbols="$("${readelf_tool}" --dyn-syms --wide "${core_path}")"
 for symbol in retro_api_version retro_set_environment retro_set_video_refresh retro_set_audio_sample retro_set_audio_sample_batch retro_set_input_poll retro_set_input_state retro_init retro_deinit retro_get_system_info retro_get_system_av_info retro_load_game retro_run retro_unload_game; do
   if ! grep -Eq "[[:space:]]${symbol}$" <<<"${symbols}"; then

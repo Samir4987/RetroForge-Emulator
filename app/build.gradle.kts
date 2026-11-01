@@ -12,6 +12,7 @@ plugins {
 android {
     namespace = "com.example"
     compileSdk = 36
+    ndkVersion = "29.0.14206865"
 
     defaultConfig {
         applicationId = "com.aistudio.retroforge.gkqwnx"
@@ -26,6 +27,7 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags += listOf("-std=c++17")
+                arguments += listOf("-DANDROID_STL=c++_shared")
             }
         }
     }
@@ -146,18 +148,45 @@ tasks.withType<Test> {
     }
 }
 
-// Nintendo 3DS: stage the separately built Azahar core into the APK's ARM64 JNI libs.
+// Nintendo 3DS: stage the separately built Azahar core and its GPL notice.
 // Build Azahar with scripts/build-azahar-android.sh first, then run:
 // ./gradlew :app:stageAzaharCore :app:assembleDebug
-//
-// Pass a concrete File to the Android SourceSet API. Newer Android Gradle
-// Plugin versions reject Provider instances passed directly to srcDir().
-val azaharCoreInput = rootProject.file(".build/azahar-artifacts/arm64-v8a/azahar_libretro.so")
+val azaharArtifactDir = rootProject.file(".build/azahar-artifacts/arm64-v8a")
+val azaharCoreInput = azaharArtifactDir.resolve("azahar_libretro.so")
+val azaharLicenseInput = azaharArtifactDir.resolve("AZAHAR-LICENSE.txt")
+val azaharRevisionInput = azaharArtifactDir.resolve("AZAHAR-REVISION.txt")
+val azaharSha256Input = azaharArtifactDir.resolve("AZAHAR-SHA256.txt")
 val azaharJniLibsDir = layout.buildDirectory.dir("generated/azaharJniLibs").get().asFile
+val azaharAssetsDir = layout.buildDirectory.dir("generated/azaharAssets").get().asFile
 
 android.sourceSets.getByName("main").jniLibs.srcDir(azaharJniLibsDir)
+android.sourceSets.getByName("main").assets.srcDir(azaharAssetsDir)
+
+tasks.register<Copy>("stageAzaharLicense") {
+    from(azaharLicenseInput)
+    from(azaharRevisionInput)
+    from(azaharSha256Input)
+    into(azaharAssetsDir.resolve("licenses/azahar"))
+    doFirst {
+        require(azaharLicenseInput.isFile && azaharLicenseInput.length() > 0L) {
+            "Azahar GPL license notice is missing from the verified artifact."
+        }
+        require(azaharRevisionInput.readText().trim() == "01623d2fb707317410225c0eced82e3e0c84edc1") {
+            "Azahar source revision does not match the pinned integration revision."
+        }
+        require(azaharSha256Input.isFile && azaharSha256Input.length() > 0L) {
+            "Azahar SHA-256 manifest is missing."
+        }
+        val expectedHash = azaharSha256Input.readText().trim()
+        val actualHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(azaharCoreInput.readBytes())
+            .joinToString("") { "%02x".format(it) }
+        require(expectedHash == actualHash) { "Azahar core SHA-256 verification failed." }
+    }
+}
 
 tasks.register<Copy>("stageAzaharCore") {
+    dependsOn("stageAzaharLicense")
     from(azaharCoreInput)
     into(azaharJniLibsDir.resolve("arm64-v8a"))
     doFirst {
