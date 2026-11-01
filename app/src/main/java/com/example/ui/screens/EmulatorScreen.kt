@@ -205,6 +205,7 @@ fun EmulatorScreen(
 
     var frameTicker by remember { mutableStateOf(0L) }
     LaunchedEffect(ndsRuntime) {
+        var nextFrameDeadlineNs = System.nanoTime()
         while (true) {
             if (emulatorCore.isPaused) {
                 ndsRuntime?.setPaused(true)
@@ -224,8 +225,21 @@ fun EmulatorScreen(
                 }
             }
             frameTicker = emulatorCore.frameCounter
-            val frameDelay = (16L / emulatorCore.fastForwardMultiplier.toLong().coerceAtLeast(1L)).coerceAtLeast(4L)
-            delay(frameDelay)
+
+            // Pace against the core's AV timing instead of assuming every system is 62.5 FPS.
+            // Fractional deadlines avoid cumulative drift for rates such as 59.826 FPS.
+            val frameRate = ndsRuntime?.frameRate ?: LibretroRuntime.DEFAULT_FRAME_RATE
+            val speed = emulatorCore.fastForwardMultiplier.toDouble().coerceIn(1.0, 8.0)
+            val frameIntervalNs = (1_000_000_000.0 / (frameRate * speed)).toLong().coerceAtLeast(1L)
+            nextFrameDeadlineNs += frameIntervalNs
+            val remainingNs = nextFrameDeadlineNs - System.nanoTime()
+            if (remainingNs > 0L) {
+                delay(((remainingNs + 999_999L) / 1_000_000L).coerceAtLeast(1L))
+            } else {
+                // Avoid a busy catch-up loop if rendering falls behind the target cadence.
+                nextFrameDeadlineNs = System.nanoTime()
+                delay(1L)
+            }
         }
     }
 
