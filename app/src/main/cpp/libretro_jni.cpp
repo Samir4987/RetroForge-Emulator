@@ -173,7 +173,9 @@ bool create_egl_context(unsigned context_type) {
         egl_display = EGL_NO_DISPLAY;
         return false;
     }
-    // A fixed off-screen surface keeps the software-facing JNI frame path usable\n    // without an Android Surface. The core may render a smaller viewport into it.\n    const EGLint surface_attributes[] = {EGL_WIDTH, 1024, EGL_HEIGHT, 1024, EGL_NONE};
+    // A fixed off-screen surface keeps the JNI frame path usable without an Android Surface.
+    // The core may render a smaller viewport into it.
+    const EGLint surface_attributes[] = {EGL_WIDTH, 1024, EGL_HEIGHT, 1024, EGL_NONE};
     egl_surface = eglCreatePbufferSurface(egl_display, config, surface_attributes);
     const EGLint context_attributes[] = {
         EGL_CONTEXT_CLIENT_VERSION, context_type == 4 ? 3 : 2, EGL_NONE
@@ -368,11 +370,11 @@ void reset_symbols() {
 }
 
 void close_core() {
-    if (hardware_rendering) destroy_egl_context();
     if (game_loaded && unload_game) unload_game();
     game_loaded = false;
     if (initialized && core_deinit) core_deinit();
     initialized = false;
+    if (hardware_rendering) destroy_egl_context();
     if (core) dlclose(core);
     core = nullptr;
     rom_data.clear();
