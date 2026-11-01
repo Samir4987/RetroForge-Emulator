@@ -14,6 +14,8 @@ data class CampaignStage(
     val bossHealthMax: Int
 )
 
+data class CampaignSnapshot(val stageIndex: Int, val progress: Int, val bossHealth: Int, val bossActive: Boolean, val completed: Boolean)
+
 data class CampaignView(
     val level: Int,
     val levelTitle: String,
@@ -61,6 +63,24 @@ class GameCampaign private constructor(
                 message = if (finished) ending else statusMessage
             )
         }
+
+    fun snapshot() = CampaignSnapshot(stageIndex, progress, bossHealth, bossActive, finished)
+
+    fun restore(snapshot: CampaignSnapshot) {
+        stageIndex = snapshot.stageIndex.coerceIn(0, stages.lastIndex)
+        val stage = stages[stageIndex]
+        progress = snapshot.progress.coerceIn(0, stage.objectiveGoal)
+        bossActive = snapshot.bossActive && !snapshot.completed && progress >= stage.objectiveGoal
+        bossHealth = if (bossActive) snapshot.bossHealth.coerceIn(1, stage.bossHealthMax) else 0
+        finished = snapshot.completed
+        if (finished) {
+            bossActive = false
+            bossHealth = 0
+            statusMessage = ending
+        } else {
+            statusMessage = if (bossActive) "${stage.bossName} has appeared!" else stage.story
+        }
+    }
 
     fun reset() {
         stageIndex = 0
