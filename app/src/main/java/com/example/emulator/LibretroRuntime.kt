@@ -37,6 +37,11 @@ class LibretroRuntime(
     val isAvailable: Boolean
         get() = state == State.READY || state == State.GAME_LOADED
 
+    /** Native core timing in frames per second, used to pace emulation accurately. */
+    val frameRate: Double
+        get() = native?.nativeGetFrameRate()?.takeIf { it.isFinite() && it in 1.0..240.0 }
+            ?: DEFAULT_FRAME_RATE
+
     init {
         if (frontendLibrary.isFile && coreFile.isFile) state = State.READY
     }
@@ -194,6 +199,7 @@ class LibretroRuntime(
 
     private companion object {
         const val DEFAULT_SAMPLE_RATE = 32768
+        const val DEFAULT_FRAME_RATE = 60.0
     }
 }
 
