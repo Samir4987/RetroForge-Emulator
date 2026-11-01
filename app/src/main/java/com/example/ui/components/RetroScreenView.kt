@@ -7,6 +7,8 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -41,6 +43,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.emulator.RetroSystem
 
+enum class DualScreenLayout(val label: String) {
+    STACKED("Stacked"),
+    SIDE_BY_SIDE("Side by side"),
+    TOP_ONLY("Top screen only"),
+    BOTTOM_ONLY("Touch screen only")
+}
+
 @Composable
 fun RetroScreenView(
     system: RetroSystem,
@@ -50,6 +59,7 @@ fun RetroScreenView(
     fastForwardMultiplier: Float = 1.0f,
     isPaused: Boolean = false,
     enableScanlines: Boolean = true,
+    dualScreenLayout: DualScreenLayout = DualScreenLayout.STACKED,
     onTouchInput: ((x: Float, y: Float, isTouching: Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -61,118 +71,178 @@ fun RetroScreenView(
         shadowElevation = 8.dp
     ) {
         if (system.isDualScreen && bottomScreenBitmap != null) {
-            // NDS Dual Screen Layout (Top display + Bottom touch display)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Top Screen
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .aspectRatio(system.defaultAspect)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black)
+            when (dualScreenLayout) {
+                DualScreenLayout.STACKED -> Column(
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    ScreenCanvas(
+                    DisplayPanel(
                         bitmap = screenBitmap,
-                        enableScanlines = enableScanlines
-                    )
-                    ScreenHudOverlay(
+                        system = system,
+                        enableScanlines = enableScanlines,
+                        modifier = Modifier.fillMaxWidth(0.92f),
+                        isPaused = isPaused,
                         isRewinding = isRewinding,
-                        fastForwardMultiplier = fastForwardMultiplier,
-                        isPaused = isPaused
+                        fastForwardMultiplier = fastForwardMultiplier
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .height(4.dp)
+                            .background(Color(0xFF2C2F3E), RoundedCornerShape(2.dp))
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    DisplayPanel(
+                        bitmap = bottomScreenBitmap,
+                        system = system,
+                        enableScanlines = enableScanlines,
+                        modifier = Modifier.fillMaxWidth(0.92f),
+                        onTouchInput = onTouchInput,
+                        touchLabel = true
                     )
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
-                // DS Hinge Line
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .height(4.dp)
-                        .background(Color(0xFF2C2F3E), RoundedCornerShape(2.dp))
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Bottom Touch Screen
-                var touchPos by remember { mutableStateOf<Offset?>(null) }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .aspectRatio(system.defaultAspect)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black)
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onPress = { offset ->
-                                    val nx = (offset.x / size.width).coerceIn(0f, 1f)
-                                    val ny = (offset.y / size.height).coerceIn(0f, 1f)
-                                    onTouchInput?.invoke(nx, ny, true)
-                                    tryAwaitRelease()
-                                    onTouchInput?.invoke(nx, ny, false)
-                                }
-                            )
-                        }
-                        .pointerInput(Unit) {
-                            detectDragGestures(
-                                onDragStart = { offset ->
-                                    val nx = (offset.x / size.width).coerceIn(0f, 1f)
-                                    val ny = (offset.y / size.height).coerceIn(0f, 1f)
-                                    onTouchInput?.invoke(nx, ny, true)
-                                },
-                                onDragEnd = {
-                                    onTouchInput?.invoke(0f, 0f, false)
-                                },
-                                onDragCancel = {
-                                    onTouchInput?.invoke(0f, 0f, false)
-                                },
-                                onDrag = { change, _ ->
-                                    val nx = (change.position.x / size.width).coerceIn(0f, 1f)
-                                    val ny = (change.position.y / size.height).coerceIn(0f, 1f)
-                                    onTouchInput?.invoke(nx, ny, true)
-                                }
-                            )
-                        }
+                DualScreenLayout.SIDE_BY_SIDE -> Row(
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ScreenCanvas(
-                        bitmap = bottomScreenBitmap,
-                        enableScanlines = enableScanlines
+                    DisplayPanel(
+                        bitmap = screenBitmap,
+                        system = system,
+                        enableScanlines = enableScanlines,
+                        modifier = Modifier.weight(1f),
+                        isPaused = isPaused,
+                        isRewinding = isRewinding,
+                        fastForwardMultiplier = fastForwardMultiplier
                     )
-                    Text(
-                        text = "TOUCH SCREEN",
-                        color = Color.White.copy(alpha = 0.35f),
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(4.dp)
+                    DisplayPanel(
+                        bitmap = bottomScreenBitmap,
+                        system = system,
+                        enableScanlines = enableScanlines,
+                        modifier = Modifier.weight(1f),
+                        onTouchInput = onTouchInput,
+                        touchLabel = true
+                    )
+                }
+
+                DualScreenLayout.TOP_ONLY -> Column(
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    DisplayPanel(
+                        bitmap = screenBitmap,
+                        system = system,
+                        enableScanlines = enableScanlines,
+                        modifier = Modifier.fillMaxWidth(0.92f),
+                        isPaused = isPaused,
+                        isRewinding = isRewinding,
+                        fastForwardMultiplier = fastForwardMultiplier
+                    )
+                }
+
+                DualScreenLayout.BOTTOM_ONLY -> Column(
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    DisplayPanel(
+                        bitmap = bottomScreenBitmap,
+                        system = system,
+                        enableScanlines = enableScanlines,
+                        modifier = Modifier.fillMaxWidth(0.92f),
+                        onTouchInput = onTouchInput,
+                        touchLabel = true
                     )
                 }
             }
         } else {
-            // Single Screen Display (GB, GBC, GBA, N64)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp)
-                    .aspectRatio(system.defaultAspect)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.Black),
-                contentAlignment = Alignment.Center
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                ScreenCanvas(
+                DisplayPanel(
                     bitmap = screenBitmap,
-                    enableScanlines = enableScanlines
-                )
-                ScreenHudOverlay(
+                    system = system,
+                    enableScanlines = enableScanlines,
+                    modifier = Modifier.fillMaxWidth(),
+                    isPaused = isPaused,
                     isRewinding = isRewinding,
-                    fastForwardMultiplier = fastForwardMultiplier,
-                    isPaused = isPaused
+                    fastForwardMultiplier = fastForwardMultiplier
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun DisplayPanel(
+    bitmap: Bitmap,
+    system: RetroSystem,
+    enableScanlines: Boolean,
+    modifier: Modifier,
+    isPaused: Boolean = false,
+    isRewinding: Boolean = false,
+    fastForwardMultiplier: Float = 1.0f,
+    onTouchInput: ((Float, Float, Boolean) -> Unit)? = null,
+    touchLabel: Boolean = false
+) {
+    val touchModifier = if (onTouchInput != null) {
+        Modifier
+            .pointerInput(onTouchInput) {
+                detectTapGestures(
+                    onPress = { offset ->
+                        val nx = (offset.x / size.width).coerceIn(0f, 1f)
+                        val ny = (offset.y / size.height).coerceIn(0f, 1f)
+                        onTouchInput.invoke(nx, ny, true)
+                        tryAwaitRelease()
+                        onTouchInput.invoke(nx, ny, false)
+                    }
+                )
+            }
+            .pointerInput(onTouchInput) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        val nx = (offset.x / size.width).coerceIn(0f, 1f)
+                        val ny = (offset.y / size.height).coerceIn(0f, 1f)
+                        onTouchInput.invoke(nx, ny, true)
+                    },
+                    onDragEnd = { onTouchInput.invoke(0f, 0f, false) },
+                    onDragCancel = { onTouchInput.invoke(0f, 0f, false) },
+                    onDrag = { change, _ ->
+                        val nx = (change.position.x / size.width).coerceIn(0f, 1f)
+                        val ny = (change.position.y / size.height).coerceIn(0f, 1f)
+                        onTouchInput.invoke(nx, ny, true)
+                    }
+                )
+            }
+    } else {
+        Modifier
+    }
+
+    Box(
+        modifier = modifier
+            .then(touchModifier)
+            .aspectRatio(system.defaultAspect)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black)
+    ) {
+        ScreenCanvas(bitmap = bitmap, enableScanlines = enableScanlines)
+        if (isPaused || isRewinding || fastForwardMultiplier > 1f) {
+            ScreenHudOverlay(
+                isRewinding = isRewinding,
+                fastForwardMultiplier = fastForwardMultiplier,
+                isPaused = isPaused
+            )
+        }
+        if (touchLabel) {
+            Text(
+                text = "TOUCH SCREEN",
+                color = Color.White.copy(alpha = 0.35f),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
+            )
         }
     }
 }
