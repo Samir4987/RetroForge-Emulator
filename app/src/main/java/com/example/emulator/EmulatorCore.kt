@@ -45,6 +45,8 @@ class EmulatorCore(
     private var playerHealth = 100
     private var score = 0
     private var gameTick = 0
+    private lateinit var campaign: GameCampaign
+    private val collectedGems = mutableSetOf<Int>()
 
     // N64 3D engine state
     private var pitch = 0f
@@ -73,6 +75,9 @@ class EmulatorCore(
     fun loadGame(game: RetroGame) {
         currentGame = game
         currentSystem = RetroSystem.fromCode(game.system)
+        campaign = GameCampaign.forSystem(currentSystem)
+        campaign.reset()
+        collectedGems.clear()
         recreateBuffers()
         resetGameState()
         rewindBuffer.clear()
@@ -111,6 +116,7 @@ class EmulatorCore(
         yaw = 0f
         lasers.clear()
         shieldCharge = 100
+        collectedGems.clear()
     }
 
     fun tick() {
@@ -138,6 +144,7 @@ class EmulatorCore(
         }
 
         renderFrame()
+        drawCampaignOverlay()
 
         // Push state snapshot into rewind buffer (sampling every 2-3 frames to maximize rewind length)
         if (frameCounter % 2 == 0L) {
@@ -167,6 +174,7 @@ class EmulatorCore(
 
         if (inputState.buttonA) {
             audioSynthesizer.playLaser()
+            if (campaign.view.bossActive) campaign.damageBoss() else campaign.recordObjective()
             score += 10
             inputState.buttonA = false
         }
@@ -197,6 +205,19 @@ class EmulatorCore(
             score += 5
             inputState.buttonA = false
         }
+        val gemPositions = listOf(52f to 75f, 118f to 55f)
+        gemPositions.forEachIndexed { index, gem ->
+            if (index !in collectedGems && kotlin.math.hypot(playerX - gem.first, playerY - gem.second) < 13f) {
+                collectedGems.add(index)
+                score += 25
+                audioSynthesizer.playCoin()
+                campaign.recordObjective()
+            }
+        }
+        if (inputState.buttonB) {
+            if (campaign.view.bossActive) campaign.damageBoss()
+            inputState.buttonB = false
+        }
     }
 
     private fun updateGbaSimulation() {
@@ -226,6 +247,7 @@ class EmulatorCore(
             trackPosition = 0f
             lap++
             audioSynthesizer.playCoin()
+            if (campaign.view.bossActive) campaign.damageBoss() else campaign.recordObjective()
         }
     }
 
@@ -242,6 +264,7 @@ class EmulatorCore(
                     target[3] = 0f // Pop target
                     score += 50
                     audioSynthesizer.playLaser()
+                    if (campaign.view.bossActive) campaign.damageBoss() else campaign.recordObjective()
                 }
             }
         } else {
@@ -249,12 +272,17 @@ class EmulatorCore(
         }
 
         // Respawn touch targets occasionally
-        if (gameTick % 90 == 0) {
+        if (gameTick % 90 == 0 && !campaign.view.bossActive && !campaign.view.completed) {
             touchTargets.forEach {
                 it[3] = 1f
                 it[0] = 30f + (Math.random() * 190f).toFloat()
                 it[1] = 40f + (Math.random() * 110f).toFloat()
             }
+        }
+        if (inputState.isTouching && campaign.view.bossActive) {
+            val dx = touchPx - 80f
+            val dy = touchPy - 72f
+            if (kotlin.math.hypot(dx, dy) < 24f) campaign.damageBoss()
         }
     }
 
@@ -287,6 +315,7 @@ class EmulatorCore(
             if (laser[2] > 250f) {
                 iter.remove()
                 score += 20
+                if (campaign.view.bossActive) campaign.damageBoss() else campaign.recordObjective()
             }
         }
     }
@@ -600,6 +629,46 @@ class EmulatorCore(
         canvas.drawText("N64 64-BIT 3D ENGINE", 16f, 226f, paint)
         canvas.drawText("TARGET LOCK: OK", 140f, 226f, paint)
         canvas.drawText("SCORE: $score", 240f, 226f, paint)
+    }
+
+    /** Draws campaign progress in the prototype's existing low-resolution HUD style. */
+    private fun drawCampaignOverlay() {
+        if (!::campaign.isInitialized) return
+        val view = campaign.view
+        val canvas = Canvas(screenBitmap)
+        val paint = Paint().apply { isAntiAlias = false }
+        val h = screenBitmap.height.toFloat()
+        val w = screenBitmap.width.toFloat()
+        val panelHeight = if (currentSystem == RetroSystem.GBC) 22f else 20f
+        paint.color = Color.argb(220, 8, 12, 20)
+        canvas.drawRect(0f, h - panelHeight, w, h, paint)
+        paint.color = when (currentSystem) {
+            RetroSystem.GB -> Color.rgb(15, 56, 15)
+            RetroSystem.GBC -> Color.rgb(100, 220, 190)
+            RetroSystem.GBA -> Color.YELLOW
+            RetroSystem.NDS -> Color.CYAN
+            RetroSystem.N64 -> Color.rgb(255, 200, 0)
+        }
+        paint.textSize = if (w < 200f) 6f else 8f
+        val label = if (view.completed) "CAMPAIGN CLEAR" else "LV ${view.level}/3 ${view.levelTitle}"
+        canvas.drawText(label.take(34), 3f, h - 11f, paint)
+        paint.textSize = if (w < 200f) 5f else 7f
+        val detail = when {
+            view.completed -> view.message
+            view.bossActive -> "BOSS ${view.bossName} HP ${view.bossHealth}/${view.bossHealthMax}"
+            else -> "${view.objective}: ${view.objectiveProgress}/${view.objectiveGoal}"
+        }
+        canvas.drawText(detail.take(if (w < 200f) 28 else 44), 3f, h - 3f, paint)
+        if (currentSystem == RetroSystem.NDS && bottomScreenBitmap != null) {
+            val bottom = Canvas(bottomScreenBitmap!!)
+            paint.textSize = 8f
+            paint.color = Color.WHITE
+            bottom.drawText(if (view.bossActive) "BOSS: ${view.bossName}" else "LV ${view.level}: ${view.objective}", 5f, 12f, paint)
+            if (view.bossActive) {
+                paint.color = Color.RED
+                bottom.drawRect(5f, 17f, 5f + 246f * view.bossHealth / view.bossHealthMax, 21f, paint)
+            }
+        }
     }
 
     private fun createSnapshot(): FrameSnapshot {
