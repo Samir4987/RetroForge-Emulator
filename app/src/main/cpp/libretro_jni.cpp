@@ -173,7 +173,7 @@ bool create_egl_context(unsigned context_type) {
         egl_display = EGL_NO_DISPLAY;
         return false;
     }
-    const EGLint surface_attributes[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
+    // A fixed off-screen surface keeps the software-facing JNI frame path usable\n    // without an Android Surface. The core may render a smaller viewport into it.\n    const EGLint surface_attributes[] = {EGL_WIDTH, 1024, EGL_HEIGHT, 1024, EGL_NONE};
     egl_surface = eglCreatePbufferSurface(egl_display, config, surface_attributes);
     const EGLint context_attributes[] = {
         EGL_CONTEXT_CLIENT_VERSION, context_type == 4 ? 3 : 2, EGL_NONE
