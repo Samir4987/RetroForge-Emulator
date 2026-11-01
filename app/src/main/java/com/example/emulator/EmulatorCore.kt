@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.util.Base64
 import com.example.data.model.RetroGame
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import kotlin.math.cos
@@ -793,6 +794,22 @@ class EmulatorCore(
         val stateJson = JSONObject().apply {
             put("frameCounter", frameCounter)
             put("playTimeSeconds", playTimeSeconds)
+            put("gameTick", gameTick)
+            put("trackCurve", trackCurve.toDouble())
+            put("shieldCharge", shieldCharge)
+            put("collectedGems", JSONArray().apply { collectedGems.sorted().forEach { put(it) } })
+            put("defeatedDungeonSentries", JSONArray().apply { defeatedDungeonSentries.sorted().forEach { put(it) } })
+            put("touchTargets", JSONArray().apply {
+                touchTargets.forEach { target ->
+                    put(JSONArray().put(target[0].toDouble()).put(target[1].toDouble()).put(target[2].toDouble()).put(target[3].toDouble()))
+                }
+            })
+            put("lasers", JSONArray().apply {
+                lasers.forEach { laser ->
+                    put(JSONArray().put(laser[0].toDouble()).put(laser[1].toDouble()).put(laser[2].toDouble())
+                        .put(laser[3].toDouble()).put(laser[4].toDouble()).put(laser[5].toDouble()))
+                }
+            })
             put("playerX", playerX.toDouble())
             put("playerY", playerY.toDouble())
             put("playerVx", playerVx.toDouble())
@@ -830,6 +847,39 @@ class EmulatorCore(
             val json = JSONObject(snapshot.stateJson)
             frameCounter = json.optLong("frameCounter", snapshot.frameIndex)
             playTimeSeconds = json.optLong("playTimeSeconds", playTimeSeconds)
+            gameTick = json.optInt("gameTick", gameTick)
+            trackCurve = json.optDouble("trackCurve", trackCurve.toDouble()).toFloat()
+            shieldCharge = json.optInt("shieldCharge", shieldCharge).coerceIn(0, 100)
+
+            collectedGems.clear()
+            json.optJSONArray("collectedGems")?.let { values ->
+                for (index in 0 until values.length()) collectedGems.add(values.optInt(index))
+            }
+            defeatedDungeonSentries.clear()
+            json.optJSONArray("defeatedDungeonSentries")?.let { values ->
+                for (index in 0 until values.length()) defeatedDungeonSentries.add(values.optInt(index))
+            }
+            json.optJSONArray("touchTargets")?.let { values ->
+                for (index in 0 until minOf(values.length(), touchTargets.size)) {
+                    val target = values.optJSONArray(index) ?: continue
+                    if (target.length() >= 4) {
+                        touchTargets[index][0] = target.optDouble(0).toFloat()
+                        touchTargets[index][1] = target.optDouble(1).toFloat()
+                        touchTargets[index][2] = target.optDouble(2).toFloat()
+                        touchTargets[index][3] = target.optDouble(3).toFloat()
+                    }
+                }
+            }
+            lasers.clear()
+            json.optJSONArray("lasers")?.let { values ->
+                for (index in 0 until values.length()) {
+                    val laser = values.optJSONArray(index) ?: continue
+                    if (laser.length() >= 6) {
+                        lasers.add(FloatArray(6) { part -> laser.optDouble(part).toFloat() })
+                    }
+                }
+            }
+            touchWasActive = false
             playerX = json.optDouble("playerX", playerX.toDouble()).toFloat()
             playerY = json.optDouble("playerY", playerY.toDouble()).toFloat()
             playerVx = json.optDouble("playerVx", playerVx.toDouble()).toFloat()
