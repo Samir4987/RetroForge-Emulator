@@ -50,4 +50,22 @@ class LibretroVideoConverterTest {
         assertEquals(Color.RED, bottom.getPixel(0, 0))
         assertEquals(Color.GREEN, bottom.getPixel(1, 0))
     }
+    @Test
+    fun converts0Rgb1555Pixels() {
+        val bytes = ByteBuffer.allocateDirect(8).order(ByteOrder.LITTLE_ENDIAN)
+            .putShort(0x7C00.toShort())
+            .putShort(0x03E0.toShort())
+            .putShort(0x001F.toShort())
+            .putShort(0x7FFF.toShort())
+        bytes.position(0)
+        val frame = LibretroVideoFrame(2, 2, 4, 0, bytes)
+
+        val (top, bottom) = LibretroVideoConverter.splitDualScreenFrame(frame)
+
+        assertEquals(Color.RED, top.getPixel(0, 0))
+        assertEquals(Color.GREEN, top.getPixel(1, 0))
+        assertEquals(Color.BLUE, bottom.getPixel(0, 0))
+        assertEquals(Color.WHITE, bottom.getPixel(1, 0))
+    }
+
 }

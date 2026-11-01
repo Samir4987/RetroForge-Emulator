@@ -31,8 +31,8 @@ The pin and build approach follow the upstream Libretro Android CI configuration
 - The frontend negotiates GLES3 and captures the hardware frame through an EGL pbuffer readback path.
 - Video metadata, pitch, pixel format, AV timing, and stereo PCM16 audio are transported to Kotlin.
 - The Compose emulator screen now starts the Azahar runtime for N3DS ROMs rather than using the demo renderer.
-- A vertically stacked dual-display frame is converted into separate top and bottom Android bitmaps.
-- Virtual D-pad, A/B/X/Y, Start/Select, L/R, Circle Pad axes, and bottom-screen pointer input are forwarded to Libretro.
+- A vertically stacked dual-display frame is converted into separate top and bottom Android bitmaps, with stacked, side-by-side, top-only, and touch-screen-only layout choices.
+- Virtual D-pad and Circle Pad, A/B/X/Y, Start/Select, L/R, and bottom-screen pointer input are forwarded to Libretro.
 - PCM samples are sent to Android AudioTrack. Partial writes are retained in a bounded pending buffer.
 - App lifecycle pause/resume pauses native frame execution and audio output.
 - Save-state serialization and restore are exposed when the core exports all three Libretro serialization functions. Large 3DS snapshots are stored atomically in app-private files, not Firestore documents (which have a small per-document size limit); slot metadata is rebuilt from local files on launch.

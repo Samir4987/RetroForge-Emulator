@@ -54,8 +54,8 @@ The default CI unit-test run excludes that emulator-dependent class unless the p
 - [x] Pin the Azahar Libretro core and add a separate ARM64 build workflow.
 - [x] Add ELF64/AArch64, required-symbol, revision, and checksum verification.
 - [x] Implement JNI transport for video, stereo audio, AV metadata, joypad, analog, and pointer input.
-- [x] Add vertically stacked dual-display conversion and Compose screen wiring.
-- [x] Wire AudioTrack, runtime pause/resume, ROM URI caching, and optional Libretro save-state APIs.
+- [x] Add vertically stacked dual-display conversion, stacked/side-by-side/top-only/touch-only layout options, and Compose screen wiring.
+- [x] Wire AudioTrack, runtime pause/resume, persistent ROM URI access, and local optional Libretro save-state files.
 - [x] Add APK staging for the core and GPL/revision metadata.
 - [ ] Build and inspect the latest 3DS-enabled APK.
 - [ ] Boot lawful homebrew on a physical ARM64 Android device.
