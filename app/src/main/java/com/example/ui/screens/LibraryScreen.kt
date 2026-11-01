@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -110,6 +111,7 @@ fun LibraryScreen(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
+            uris.forEach { persistRomReadPermission(context, it) }
             isScanning = true
             coroutineScope.launch {
                 val scanned = romLibraryRepository.scanAndInsertMultipleUris(context, uris)
@@ -124,13 +126,27 @@ fun LibraryScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
+            val hasPersistentAccess = persistRomReadPermission(context, uri)
             isScanning = true
             coroutineScope.launch {
                 val entity = romLibraryRepository.scanAndInsertUri(context, uri)
                 isScanning = false
                 if (entity != null) {
                     Toast.makeText(context, "Indexed ${entity.title} (${entity.system})", Toast.LENGTH_SHORT).show()
-                    val bytes = readRomBytes(context, uri)
+                    // Large 3DS images are copied by EmulatorScreen on an IO
+                    // dispatcher; don't read multi-gigabyte ROMs into memory here.
+                    val bytes = if (entity.system.equals("N3DS", ignoreCase = true)) {
+                        null
+                    } else {
+                        withContext(Dispatchers.IO) { readRomBytes(context, uri) }
+                    }
+                    if (!hasPersistentAccess && uri.scheme == "content") {
+                        Toast.makeText(
+                            context,
+                            "This provider may not retain ROM access after restart. Keep the source available.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                     onGameSelected(entity.toRetroGame(bytes))
                 }
             }
@@ -557,6 +573,21 @@ private fun ListRomCardItem(
                 )
             }
         }
+    }
+}
+
+private fun persistRomReadPermission(context: Context, uri: Uri): Boolean {
+    if (uri.scheme != "content") return true
+    return try {
+        context.contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION
+        )
+        true
+    } catch (_: SecurityException) {
+        false
+    } catch (_: IllegalArgumentException) {
+        false
     }
 }
 
