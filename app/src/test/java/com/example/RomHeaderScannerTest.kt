@@ -121,4 +121,32 @@ class RomHeaderScannerTest {
         assertEquals("Racing", result.genre)
         assertTrue(result.cartridgeMapper.contains("Touch"))
     }
+    @Test
+    fun parseN3dsCciHeader_detectsNcsdContainer() {
+        val bytes = ByteArray(1024)
+        val signature = "NCSD".toByteArray(StandardCharsets.US_ASCII)
+        System.arraycopy(signature, 0, bytes, 0x100, signature.size)
+
+        val result = RomHeaderScanner.parseHeader(bytes, "cci", "Pokemon_X.3ds")
+
+        assertEquals(RetroSystem.N3DS, result.system)
+        assertEquals("Pokemon X", result.title)
+        assertEquals("3DS-NCSD", result.gameCode)
+        assertEquals("SIGNATURE-OK", result.headerChecksum)
+    }
+
+    @Test
+    fun parseN3dsCxiHeader_detectsNcchContainer() {
+        val bytes = ByteArray(1024)
+        val signature = "NCCH".toByteArray(StandardCharsets.US_ASCII)
+        System.arraycopy(signature, 0, bytes, 0x100, signature.size)
+
+        val result = RomHeaderScanner.parseHeader(bytes, "cxi", "Homebrew_App.cxi")
+
+        assertEquals(RetroSystem.N3DS, result.system)
+        assertEquals("Homebrew App", result.title)
+        assertEquals("3DS-NCCH", result.gameCode)
+        assertEquals("SIGNATURE-OK", result.headerChecksum)
+    }
+
 }
