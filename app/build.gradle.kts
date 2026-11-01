@@ -146,18 +146,20 @@ tasks.withType<Test> {
     }
 }
 
-
 // Nintendo 3DS: stage the separately built Azahar core into the APK's ARM64 JNI libs.
 // Build Azahar with scripts/build-azahar-android.sh first, then run:
 // ./gradlew :app:stageAzaharCore :app:assembleDebug
+//
+// Pass a concrete File to the Android SourceSet API. Newer Android Gradle
+// Plugin versions reject Provider instances passed directly to srcDir().
 val azaharCoreInput = rootProject.file(".build/azahar-artifacts/arm64-v8a/azahar_libretro.so")
-val azaharJniLibsDir = layout.buildDirectory.dir("generated/azaharJniLibs")
+val azaharJniLibsDir = layout.buildDirectory.dir("generated/azaharJniLibs").get().asFile
 
 android.sourceSets.getByName("main").jniLibs.srcDir(azaharJniLibsDir)
 
 tasks.register<Copy>("stageAzaharCore") {
     from(azaharCoreInput)
-    into(azaharJniLibsDir.map { it.dir("arm64-v8a") })
+    into(azaharJniLibsDir.resolve("arm64-v8a"))
     doFirst {
         require(azaharCoreInput.isFile && azaharCoreInput.length() > 0L) {
             "Azahar core not found at ${azaharCoreInput.absolutePath}. " +
