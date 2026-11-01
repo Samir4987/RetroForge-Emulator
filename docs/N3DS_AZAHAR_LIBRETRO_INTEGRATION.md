@@ -17,17 +17,25 @@ Upstream evidence inspected on 2026-10-31:
 
 Azahar is based on the Citra lineage and has a first-party Libretro implementation. This gives RetroForge a documented Libretro ABI boundary, matching the existing native loader more closely than embedding Azahar's full Android application and its UI. The Android ARM64 CI job is evidence that upstream builds this core for Android, but does not prove that RetroForge's own build or runtime is already compatible.
 
-## Current RetroForge blockers
+## Current RetroForge integration status
 
-The existing RetroForge JNI bridge is only a lifecycle/ROM-loading scaffold:
+The native frontend has moved beyond the original ROM-loader scaffold:
 
-- Its video callback discards every frame.
-- Its audio callbacks discard samples.
-- Its input callbacks always return neutral input.
-- It does not expose the core's AV geometry or audio rate to the Android renderer/audio pipeline.
-- The current generic runtime only reports that a ROM was accepted; it does not establish playable video, audio, touch, or controller input.
+- It captures Libretro CPU video frames and supports Azahar's GLES3 hardware-frame callback by reading the EGL pbuffer into XRGB8888.
+- It exposes frame dimensions, pitch, pixel format, and the core's negotiated AV geometry/timing to Kotlin.
+- It buffers interleaved stereo PCM16 audio for the Android layer to drain.
+- It accepts Libretro joypad buttons, both analog sticks, and pointer coordinates/press state.
+- The Kotlin runtime exposes those video, audio, AV-info, and input operations.
 
-Therefore, even after packaging `azahar_libretro.so`, 3DS gameplay must **not** be marked supported until the callback pipeline and dual-screen/touch presentation are implemented and device-tested. Keep demo mode available when the native core or required runtime path is unavailable.
+Important remaining work:
+
+- The GLES3/EGL pbuffer path is a first CPU-readback frontend, not a hardware-accelerated Android display surface. Its device compatibility and performance are unverified.
+- Android AudioTrack playback is not connected yet; the runtime currently only drains PCM samples.
+- The Compose UI does not yet split Azahar's default combined 400×480 frame into the top and bottom displays or forward on-screen controls/touch into the runtime.
+- Save serialization, persistent game-save directories, user-provided system-data configuration, and lifecycle recovery still need frontend work.
+- No successful APK packaging or physical-device gameplay test has been verified for this callback implementation.
+
+The Android Azahar build is configured to disable Vulkan and use GLES so the frontend can negotiate the implemented GLES3 path. A successful core build still does not prove gameplay. Keep Nintendo 3DS labelled **integration in progress**, and preserve demo mode for other systems and when the 3DS core is unavailable.
 
 ## Reproducible build requirements to implement
 
@@ -70,7 +78,9 @@ The staging task copies the library into a generated `jniLibs/arm64-v8a` source 
 - [x] Verify the produced shared object exports the required Libretro entry points in the build script.
 - [x] Add a dedicated workflow to download the verified core artifact, stage it, assemble the APK, and verify the ARM64 library entry (workflow added; packaging run still pending).
 - [x] Add a dedicated Nintendo 3DS system/core spec and unit tests without mapping unknown systems to 3DS.
-- [ ] Implement real video, audio, input, dual-screen layout, and touch callbacks.
+- [x] Add native video/audio/input callback transport, AV metadata, and an initial EGL/GLES3 hardware-frame readback path.
+- [ ] Connect PCM output to Android AudioTrack and render/split Azahar's combined dual-screen frame in Compose.
+- [ ] Forward virtual/physical controls and touchscreen input from Android UI to the native runtime.
 - [ ] Test legal homebrew content on a physical Android device.
 - [ ] Verify load failure, unload, pause/resume, repeated launch/close, and demo fallback.
 - [ ] Complete GPL-3.0 notices and source-distribution review.
