@@ -2,6 +2,7 @@ package com.example.emulator
 
 import java.io.File
 import java.nio.ByteBuffer
+import android.util.Base64
 
 data class LibretroAvInfo(
     val baseWidth: Int,
@@ -31,7 +32,9 @@ data class LibretroVideoFrame(
  */
 class LibretroRuntime(
     private val frontendLibrary: File,
-    private val coreSpec: LibretroCoreSpec
+    private val coreSpec: LibretroCoreSpec,
+    private val systemDirectory: File = File(frontendLibrary.parentFile, "retroforge-system"),
+    private val saveDirectory: File = File(frontendLibrary.parentFile, "retroforge-saves")
 ) {
     enum class State { UNAVAILABLE, READY, GAME_LOADED, CLOSED }
 
@@ -74,7 +77,16 @@ class LibretroRuntime(
         return runCatching {
             val bridge = native ?: LibretroNative().also { native = it }
             try {
-                val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
+                systemDirectory.mkdirs()
+                saveDirectory.mkdirs()
+                val contentDirectory = rom.parentFile ?: systemDirectory
+                val error = bridge.nativeOpen(
+                    coreFile.absolutePath,
+                    rom.absolutePath,
+                    systemDirectory.absolutePath,
+                    saveDirectory.absolutePath,
+                    contentDirectory.absolutePath
+                )
                 if (error != null) throw IllegalStateException(error)
                 state = State.GAME_LOADED
             } catch (failure: Throwable) {
@@ -156,6 +168,27 @@ class LibretroRuntime(
         val destination = ShortArray(maxSamples)
         val count = checkNotNull(native).nativeCopyAudioSamples(destination)
         destination.copyOf(count.coerceIn(0, destination.size))
+    }
+
+    /** Returns a serialized Libretro state, or a failure when the core lacks support. */
+    @Synchronized
+    fun serializeStateBase64(): Result<String> = runCatching {
+        check(state == State.GAME_LOADED) { "Load a ROM before saving state." }
+        val serialized = checkNotNull(native).nativeSerializeState()
+            ?: throw UnsupportedOperationException("This Libretro core does not support save states.")
+        require(serialized.isNotEmpty()) { "The core returned an empty save state." }
+        Base64.encodeToString(serialized, Base64.NO_WRAP)
+    }
+
+    /** Restores a state previously produced by this core and compatible core version. */
+    @Synchronized
+    fun loadStateBase64(encodedState: String): Result<Unit> = runCatching {
+        check(state == State.GAME_LOADED) { "Load a ROM before restoring state." }
+        val serialized = Base64.decode(encodedState, Base64.NO_WRAP)
+        require(serialized.isNotEmpty()) { "Save state is empty." }
+        check(checkNotNull(native).nativeUnserializeState(serialized)) {
+            "The core rejected this save state."
+        }
     }
 
     /** Libretro joypad button IDs follow RETRO_DEVICE_ID_JOYPAD. */

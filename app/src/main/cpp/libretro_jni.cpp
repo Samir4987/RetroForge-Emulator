@@ -70,6 +70,9 @@ EGLSurface egl_surface = EGL_NO_SURFACE;
 HwRenderCallback hw_render_callback{};
 bool hw_context_ready = false;
 std::vector<uint8_t> rom_data;
+std::string system_directory;
+std::string save_directory;
+std::string content_directory;
 
 std::recursive_mutex core_mutex;
 std::mutex media_mutex;
@@ -99,6 +102,9 @@ using LoadGame = bool (*)(const GameInfo*);
 using RunFrame = void (*)();
 using UnloadGame = void (*)();
 using GetAvInfo = void (*)(AvInfo*);
+using SerializeSize = size_t (*)();
+using Serialize = bool (*)(void*, size_t);
+using Unserialize = bool (*)(const void*, size_t);
 ApiVersion api_version = nullptr;
 SetEnvironment set_environment = nullptr;
 SetVideo set_video = nullptr;
@@ -112,6 +118,9 @@ LoadGame load_game = nullptr;
 RunFrame run_frame = nullptr;
 UnloadGame unload_game = nullptr;
 GetAvInfo get_av_info = nullptr;
+SerializeSize serialize_size = nullptr;
+Serialize serialize_state = nullptr;
+Unserialize unserialize_state = nullptr;
 
 bool make_gles_current() {
     return egl_display != EGL_NO_DISPLAY && egl_context != EGL_NO_CONTEXT &&
@@ -200,6 +209,18 @@ void destroy_gles_context() {
 }
 
 bool environment(unsigned command, void* data) {
+    if (command == 9 && data) {
+        *static_cast<const char**>(data) = system_directory.c_str();
+        return !system_directory.empty();
+    }
+    if (command == 30 && data) {
+        *static_cast<const char**>(data) = content_directory.c_str();
+        return !content_directory.empty();
+    }
+    if (command == 31 && data) {
+        *static_cast<const char**>(data) = save_directory.c_str();
+        return !save_directory.empty();
+    }
     if (command == 10 && data) {
         const auto format = *static_cast<PixelFormat*>(data);
         if (format.format > 2) return false;
@@ -347,6 +368,7 @@ void reset_symbols() {
     set_input_state = nullptr; core_init = nullptr; core_deinit = nullptr;
     get_system_info = nullptr; load_game = nullptr; run_frame = nullptr;
     unload_game = nullptr; get_av_info = nullptr;
+    serialize_size = nullptr; serialize_state = nullptr; unserialize_state = nullptr;
 }
 
 void reset_frontend_state() {
@@ -364,6 +386,23 @@ void reset_frontend_state() {
     pointer_pressed = false;
 }
 
+class ScopedUtfChars {
+public:
+    ScopedUtfChars(JNIEnv* env, jstring value) : env_(env), value_(value) {
+        if (value_) chars_ = env_->GetStringUTFChars(value_, nullptr);
+    }
+    ~ScopedUtfChars() {
+        if (chars_) env_->ReleaseStringUTFChars(value_, chars_);
+    }
+    const char* get() const { return chars_; }
+    ScopedUtfChars(const ScopedUtfChars&) = delete;
+    ScopedUtfChars& operator=(const ScopedUtfChars&) = delete;
+private:
+    JNIEnv* env_;
+    jstring value_;
+    const char* chars_ = nullptr;
+};
+
 void close_core() {
     if (hw_context_ready) make_gles_current();
     if (game_loaded && unload_game) unload_game();
@@ -380,24 +419,32 @@ void close_core() {
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstring core_path, jstring rom_path) {
+Java_com_example_emulator_LibretroNative_nativeOpen(
+    JNIEnv* env, jobject, jstring core_path, jstring rom_path,
+    jstring system_path, jstring save_path, jstring content_path) {
     std::lock_guard<std::recursive_mutex> core_lock(core_mutex);
     close_core();
-    if (!core_path || !rom_path) return env->NewStringUTF("Core path and ROM path are required.");
-
-    const char* native_core_path = env->GetStringUTFChars(core_path, nullptr);
-    if (!native_core_path) return env->NewStringUTF("Could not read core path.");
-    const char* native_rom_path = env->GetStringUTFChars(rom_path, nullptr);
-    if (!native_rom_path) {
-        env->ReleaseStringUTFChars(core_path, native_core_path);
-        return env->NewStringUTF("Could not read ROM path.");
+    if (!core_path || !rom_path || !system_path || !save_path || !content_path) {
+        return env->NewStringUTF("Core, ROM, system, save, and content paths are required.");
     }
 
-    core = dlopen(native_core_path, RTLD_NOW | RTLD_LOCAL);
-    env->ReleaseStringUTFChars(core_path, native_core_path);
+    ScopedUtfChars native_core_path(env, core_path);
+    ScopedUtfChars native_rom_path(env, rom_path);
+    ScopedUtfChars native_system_path(env, system_path);
+    ScopedUtfChars native_save_path(env, save_path);
+    ScopedUtfChars native_content_path(env, content_path);
+    if (!native_core_path.get() || !native_rom_path.get() ||
+        !native_system_path.get() || !native_save_path.get() || !native_content_path.get()) {
+        return env->NewStringUTF("Could not read one or more native paths.");
+    }
+
+    system_directory = native_system_path.get();
+    save_directory = native_save_path.get();
+    content_directory = native_content_path.get();
+
+    core = dlopen(native_core_path.get(), RTLD_NOW | RTLD_LOCAL);
     if (!core) {
         const char* error = dlerror();
-        env->ReleaseStringUTFChars(rom_path, native_rom_path);
         return env->NewStringUTF(error ? error : "Could not load core library.");
     }
 
@@ -418,12 +465,21 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
         symbol(get_av_info, "retro_get_system_av_info");
     if (!ok) {
         close_core();
-        env->ReleaseStringUTFChars(rom_path, native_rom_path);
         return env->NewStringUTF("Core is missing required Libretro API symbols.");
     }
+    // Save-state support is optional in Libretro. Expose it only when all
+    // three serialization entry points are exported by the selected core.
+    serialize_size = reinterpret_cast<SerializeSize>(dlsym(core, "retro_serialize_size"));
+    serialize_state = reinterpret_cast<Serialize>(dlsym(core, "retro_serialize"));
+    unserialize_state = reinterpret_cast<Unserialize>(dlsym(core, "retro_unserialize"));
+    if (!serialize_size || !serialize_state || !unserialize_state) {
+        serialize_size = nullptr;
+        serialize_state = nullptr;
+        unserialize_state = nullptr;
+    }
+
     if (api_version() != 1U) {
         close_core();
-        env->ReleaseStringUTFChars(rom_path, native_rom_path);
         return env->NewStringUTF("Unsupported Libretro API version; expected version 1.");
     }
 
@@ -434,34 +490,31 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
     set_input_poll(input_poll);
     set_input_state(input_state);
     core_init();
-    initialized = true;
 
+    initialized = true;
     SystemInfo info{};
     get_system_info(&info);
     if (!info.name || !info.extensions) {
-        env->ReleaseStringUTFChars(rom_path, native_rom_path);
         close_core();
         return env->NewStringUTF("Core returned incomplete system information.");
     }
-    GameInfo game{native_rom_path, nullptr, 0, nullptr};
+
+    GameInfo game{native_rom_path.get(), nullptr, 0, nullptr};
     if (!info.need_fullpath) {
-        std::ifstream input(native_rom_path, std::ios::binary | std::ios::ate);
+        std::ifstream input(native_rom_path.get(), std::ios::binary | std::ios::ate);
         if (!input) {
-            env->ReleaseStringUTFChars(rom_path, native_rom_path);
             close_core();
             return env->NewStringUTF("Could not open ROM file.");
         }
         const std::streamoff length = input.tellg();
         if (length <= 0 || static_cast<unsigned long long>(length) >
                 static_cast<unsigned long long>(std::numeric_limits<size_t>::max())) {
-            env->ReleaseStringUTFChars(rom_path, native_rom_path);
             close_core();
             return env->NewStringUTF("ROM file is empty or too large.");
         }
         rom_data.resize(static_cast<size_t>(length));
         input.seekg(0, std::ios::beg);
         if (!input.read(reinterpret_cast<char*>(rom_data.data()), length)) {
-            env->ReleaseStringUTFChars(rom_path, native_rom_path);
             close_core();
             return env->NewStringUTF("Could not read complete ROM file.");
         }
@@ -469,9 +522,7 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
         game.size = rom_data.size();
     }
 
-    const bool loaded = load_game(&game);
-    env->ReleaseStringUTFChars(rom_path, native_rom_path);
-    if (!loaded) {
+    if (!load_game(&game)) {
         close_core();
         return env->NewStringUTF("Libretro core rejected the ROM.");
     }
@@ -504,6 +555,39 @@ Java_com_example_emulator_LibretroNative_nativeGetAvInfo(JNIEnv* env, jobject) {
     jdoubleArray result = env->NewDoubleArray(7);
     if (result) env->SetDoubleArrayRegion(result, 0, 7, values);
     return result;
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_example_emulator_LibretroNative_nativeSerializeState(JNIEnv* env, jobject) {
+    std::lock_guard<std::recursive_mutex> core_lock(core_mutex);
+    if (!game_loaded || !serialize_size || !serialize_state) return nullptr;
+    const size_t size = serialize_size();
+    constexpr size_t kMaxSerializedStateBytes = 256U * 1024U * 1024U;
+    if (size == 0 || size > kMaxSerializedStateBytes ||
+        size > static_cast<size_t>(std::numeric_limits<jsize>::max())) return nullptr;
+    std::vector<uint8_t> state(size);
+    if (!serialize_state(state.data(), size)) return nullptr;
+    jbyteArray result = env->NewByteArray(static_cast<jsize>(size));
+    if (result) {
+        env->SetByteArrayRegion(result, 0, static_cast<jsize>(size),
+                                reinterpret_cast<const jbyte*>(state.data()));
+    }
+    return result;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_example_emulator_LibretroNative_nativeUnserializeState(
+    JNIEnv* env, jobject, jbyteArray serialized) {
+    std::lock_guard<std::recursive_mutex> core_lock(core_mutex);
+    if (!game_loaded || !unserialize_state || !serialized) return JNI_FALSE;
+    const jsize size = env->GetArrayLength(serialized);
+    constexpr jsize kMaxSerializedStateBytes = 256 * 1024 * 1024;
+    if (size <= 0 || size > kMaxSerializedStateBytes) return JNI_FALSE;
+    jbyte* bytes = env->GetByteArrayElements(serialized, nullptr);
+    if (!bytes) return JNI_FALSE;
+    const bool restored = unserialize_state(bytes, static_cast<size_t>(size));
+    env->ReleaseByteArrayElements(serialized, bytes, JNI_ABORT);
+    return restored ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jintArray JNICALL

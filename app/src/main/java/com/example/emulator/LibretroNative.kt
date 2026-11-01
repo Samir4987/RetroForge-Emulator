@@ -7,12 +7,14 @@ import java.nio.ByteBuffer
  * buffer; audio is drained in interleaved stereo PCM16 samples.
  */
 internal class LibretroNative {
-    external fun nativeOpen(corePath: String, romPath: String): String?
+    external fun nativeOpen(corePath: String, romPath: String, systemDirectory: String, saveDirectory: String, contentDirectory: String): String?
     external fun nativeRunFrame(): Boolean
     external fun nativeGetAvInfo(): DoubleArray
     external fun nativeGetVideoInfo(): IntArray
     external fun nativeCopyVideoFrame(destination: ByteBuffer): Int
     external fun nativeCopyAudioSamples(destination: ShortArray): Int
+    external fun nativeSerializeState(): ByteArray?
+    external fun nativeUnserializeState(serialized: ByteArray): Boolean
     external fun nativeSetJoypadButton(port: Int, button: Int, pressed: Boolean)
     external fun nativeSetAnalogAxis(port: Int, stick: Int, axis: Int, value: Int)
     external fun nativeSetPointer(x: Int, y: Int, pressed: Boolean)
