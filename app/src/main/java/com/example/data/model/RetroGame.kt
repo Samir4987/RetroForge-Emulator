@@ -10,7 +10,8 @@ data class RetroGame(
     val romFileName: String? = null,
     val romBytes: ByteArray? = null,
     val iconEmoji: String = "🎮",
-    val releaseYear: String = "1995"
+    val releaseYear: String = "1995",
+    val romUri: String? = null
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

@@ -38,7 +38,8 @@ data class ScannedRomEntity(
             romFileName = fileName,
             romBytes = romBytes,
             iconEmoji = iconEmoji,
-            releaseYear = releaseYear
+            releaseYear = releaseYear,
+            romUri = fileUri
         )
     }
 }
