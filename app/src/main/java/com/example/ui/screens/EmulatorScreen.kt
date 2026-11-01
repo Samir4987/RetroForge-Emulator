@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.Intent
 import android.widget.Toast
 import android.graphics.Bitmap
 import android.net.Uri
@@ -14,12 +15,15 @@ import com.example.emulator.LibretroCoreSpec
 import com.example.emulator.LibretroRuntime
 import com.example.emulator.LibretroVideoConverter
 import com.example.emulator.N3dsSaveStateStore
+import com.example.emulator.N3dsSystemDataImporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.roundToInt
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +39,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -115,8 +120,56 @@ fun EmulatorScreen(
     var n3dsLifecyclePaused by remember(game.id) { mutableStateOf(false) }
     var n3dsLayout by remember(game.id) { mutableStateOf(DualScreenLayout.STACKED) }
     var showN3dsLayoutMenu by remember { mutableStateOf(false) }
+    var isImporting3dsData by remember(game.id) { mutableStateOf(false) }
     val n3dsSaveStore = remember(game.id) {
         if (isNintendo3ds) N3dsSaveStateStore(File(context.filesDir, "retroforge/3ds/states")) else null
+    }
+    val n3dsSystemDataPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri ->
+        if (treeUri != null) {
+            if (n3dsRuntime?.state == LibretroRuntime.State.GAME_LOADED) {
+                Toast.makeText(
+                    context,
+                    "Close the running 3DS game before importing system data.",
+                    Toast.LENGTH_LONG
+                ).show()
+            } else {
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        treeUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: SecurityException) {
+                    Toast.makeText(context, "The folder provider did not grant persistent access; importing now.", Toast.LENGTH_SHORT).show()
+                } catch (_: IllegalArgumentException) {
+                    Toast.makeText(context, "The folder provider did not grant persistent access; importing now.", Toast.LENGTH_SHORT).show()
+                }
+                coroutineScope.launch {
+                    isImporting3dsData = true
+                    val result = N3dsSystemDataImporter.importFromTree(
+                        context,
+                        treeUri,
+                        File(context.filesDir, "retroforge/3ds/saves/Azahar")
+                    )
+                    isImporting3dsData = false
+                    result.onSuccess { summary ->
+                        val megabytes = summary.bytesCopied / (1024L * 1024L)
+                        Toast.makeText(
+                            context,
+                            "Imported ${summary.filesCopied} files (${megabytes} MiB). Reopen the 3DS game to apply.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }.onFailure { failure ->
+                        Toast.makeText(
+                            context,
+                            failure.message ?: "Could not import 3DS system data.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        }
     }
 
     var activeSkin by remember { mutableStateOf(initialSkin) }
@@ -382,6 +435,21 @@ fun EmulatorScreen(
                         }
 
                         if (isNintendo3ds) {
+                            IconButton(
+                                onClick = { n3dsSystemDataPicker.launch(null) },
+                                enabled = !isImporting3dsData,
+                                modifier = Modifier.testTag("button_n3ds_system_data")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FolderOpen,
+                                    contentDescription = "Import 3DS system data",
+                                    tint = if (isImporting3dsData) Color.Gray else Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        if (isNintendo3ds) {
                             Box {
                                 IconButton(
                                     onClick = { showN3dsLayoutMenu = true },
@@ -557,6 +625,15 @@ fun EmulatorScreen(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
             }
+            if (isNintendo3ds) {
+                Text(
+                    text = "Azahar requires decrypted 3DS ROMs. Some games also need system or Mii data dumped from your own console. Import the Azahar folder with the folder icon.",
+                    color = Color.White.copy(alpha = 0.62f),
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 3.dp)
+                )
+            }
+
 
             // On-Screen Virtual Controller
             VirtualController(
