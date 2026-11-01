@@ -65,6 +65,8 @@ cmake -S "${SOURCE_DIR}" -B "${BUILD_DIR}" \
   -DANDROID_STL=c++_shared \
   -DCMAKE_BUILD_TYPE=Release \
   -DENABLE_LIBRETRO=ON \
+  -DENABLE_VULKAN=OFF \
+  -DENABLE_OPENGL=ON \
   -DENABLE_TESTS=OFF
 
 cmake --build "${BUILD_DIR}" --target azahar_libretro --parallel "${BUILD_JOBS:-2}"
