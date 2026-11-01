@@ -87,7 +87,14 @@ class LibretroRuntime(
                     saveDirectory.absolutePath,
                     contentDirectory.absolutePath
                 )
-                if (error != null) throw IllegalStateException(error)
+                if (error != null) {
+                    val detail = if (coreSpec.system == RetroSystem.N3DS) {
+                        "$error Ensure the 3DS ROM is decrypted and import any required Azahar system/Mii data from your own console."
+                    } else {
+                        error
+                    }
+                    throw IllegalStateException(detail)
+                }
                 state = State.GAME_LOADED
             } catch (failure: Throwable) {
                 runCatching { bridge.nativeClose() }

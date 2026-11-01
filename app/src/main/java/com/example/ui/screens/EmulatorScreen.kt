@@ -147,13 +147,15 @@ fun EmulatorScreen(
                 }
                 coroutineScope.launch {
                     isImporting3dsData = true
-                    val result = N3dsSystemDataImporter.importFromTree(
-                        context,
-                        treeUri,
-                        File(context.filesDir, "retroforge/3ds/saves/Azahar")
-                    )
-                    isImporting3dsData = false
-                    result.onSuccess { summary ->
+                    try {
+                        val result = withContext(Dispatchers.IO) {
+                            N3dsSystemDataImporter.importFromTree(
+                                context,
+                                treeUri,
+                                File(context.filesDir, "retroforge/3ds/saves/Azahar")
+                            )
+                        }
+                        result.onSuccess { summary ->
                         val megabytes = summary.bytesCopied / (1024L * 1024L)
                         Toast.makeText(
                             context,
@@ -161,11 +163,14 @@ fun EmulatorScreen(
                             Toast.LENGTH_LONG
                         ).show()
                     }.onFailure { failure ->
-                        Toast.makeText(
-                            context,
-                            failure.message ?: "Could not import 3DS system data.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                            Toast.makeText(
+                                context,
+                                failure.message ?: "Could not import 3DS system data.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    } finally {
+                        isImporting3dsData = false
                     }
                 }
             }
