@@ -81,7 +81,9 @@ import com.example.ui.components.BoxArtCard
 import com.example.ui.components.ScannedRomDetailSheet
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
