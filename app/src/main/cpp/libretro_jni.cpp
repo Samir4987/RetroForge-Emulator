@@ -65,6 +65,11 @@ void* core = nullptr;
 bool initialized = false;
 bool game_loaded = false;
 AvInfo core_av_info{};
+EGLDisplay egl_display = EGL_NO_DISPLAY;
+EGLContext egl_context = EGL_NO_CONTEXT;
+EGLSurface egl_surface = EGL_NO_SURFACE;
+HwRenderCallback hw_render_callback{};
+bool hw_context_ready = false;
 std::vector<uint8_t> rom_data;
 
 std::mutex media_mutex;
