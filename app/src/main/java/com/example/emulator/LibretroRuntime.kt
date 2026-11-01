@@ -68,7 +68,7 @@ class LibretroRuntime(
             val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
             if (error != null) throw IllegalStateException(error)
             state = State.GAME_LOADED
-            startAudio()
+            startAudio(bridge.nativeGetSampleRate())
         }.onFailure {
             runCatching { native?.nativeClose() }
             native = null
@@ -128,11 +128,6 @@ class LibretroRuntime(
     override fun onNativeAudioSamples(interleavedStereoPcm: ShortArray) {
         val track = audioTrack ?: return
         if (interleavedStereoPcm.isEmpty()) return
-
-        // AudioTrack's non-blocking write may accept only part of a frame's PCM.
-        // The previous implementation discarded the unwritten tail, causing
-        // avoidable audio gaps. The emulator advances on a background dispatcher,
-        // so use a blocking stream write to preserve sample order and continuity.
         var offset = 0
         while (offset < interleavedStereoPcm.size && audioTrack === track) {
             val written = track.write(
@@ -156,13 +151,16 @@ class LibretroRuntime(
         state = State.CLOSED
     }
 
-    private fun startAudio() {
+    private fun startAudio(reportedSampleRate: Double) {
         stopAudio()
+        // Libretro timing is authoritative. Keep a defensive fallback for malformed cores.
+        val sampleRate = reportedSampleRate.takeIf { it.isFinite() && it in 8000.0..192000.0 }
+            ?.toInt() ?: DEFAULT_SAMPLE_RATE
         val minBuffer = AudioTrack.getMinBufferSize(
-            32768,
+            sampleRate,
             AudioFormat.CHANNEL_OUT_STEREO,
             AudioFormat.ENCODING_PCM_16BIT
-        ).coerceAtLeast(4096)
+        ).let { if (it > 0) it else 4096 }.coerceAtLeast(4096)
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -172,7 +170,7 @@ class LibretroRuntime(
             )
             .setAudioFormat(
                 AudioFormat.Builder()
-                    .setSampleRate(32768)
+                    .setSampleRate(sampleRate)
                     .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                     .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                     .build()
@@ -180,6 +178,7 @@ class LibretroRuntime(
             .setBufferSizeInBytes(minBuffer * 2)
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
+        check(track.state == AudioTrack.STATE_INITIALIZED) { "Android could not initialize NDS audio output." }
         audioTrack = track
         track.play()
     }
@@ -193,6 +192,9 @@ class LibretroRuntime(
         audioTrack = null
     }
 
+    private companion object {
+        const val DEFAULT_SAMPLE_RATE = 32768
+    }
 }
 
 /** Converts the app's buttons to RETRO_DEVICE_ID_JOYPAD bit positions. */
