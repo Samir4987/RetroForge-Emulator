@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# Keep only the newest validation run for a pull request branch.
+concurrency:
+  group: android-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-android-apk:
     runs-on: ubuntu-24.04
@@ -42,7 +47,36 @@ jobs:
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-36" \
-            "build-tools;36.0.0"
+            "build-tools;36.0.0" \
+            "cmake;3.22.1" \
+            "ndk;27.2.12479018"
+
+      - name: Install native build dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y pkg-config ninja-build
+
+      - name: Cache melonDS DS Android core
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/jniLibs
+          key: melondsds-v1.1.8-ndk27.2-cxx-runtime-v1
+
+      - name: Build and package melonDS DS core
+        env:
+          ANDROID_NDK_HOME: /home/runner/android-sdk/ndk/27.2.12479018
+        run: |
+          set -euxo pipefail
+          if [[ -s app/src/main/jniLibs/arm64-v8a/melondsds_libretro_android.so &&
+                -s app/src/main/jniLibs/x86_64/melondsds_libretro_android.so &&
+                -s app/src/main/jniLibs/arm64-v8a/libc++_shared.so &&
+                -s app/src/main/jniLibs/x86_64/libc++_shared.so ]]; then
+            echo "Using cached melonDS DS core binaries."
+          else
+            chmod +x scripts/build-melondsds-android.sh
+            ./scripts/build-melondsds-android.sh
+          fi
 
       - name: Bootstrap missing Gradle wrapper JAR
         shell: bash
@@ -149,6 +183,12 @@ jobs:
           grep -R -n "default_web_client_id" \
             app/build/generated/res/google-services \
             2>/dev/null || true
+
+      - name: Run NDS integration unit tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./gradlew --no-daemon :app:testDebugUnitTest --tests com.example.emulator.LibretroNdsCoreSpecTest
 
       - name: Build debug APK
         shell: bash
