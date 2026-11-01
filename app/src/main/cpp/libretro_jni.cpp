@@ -48,7 +48,7 @@ unsigned video_pixel_format = 0; // Libretro 0RGB1555 until the core selects ano
 bool video_frame_ready = false;
 std::vector<int16_t> audio_samples;
 std::array<std::array<int16_t, kJoypadButtons>, kMaxPorts> joypad_state{};
-std::array<std::array<int16_t, 2>, kMaxPorts> analog_state{};
+std::array<std::array<int16_t, 4>, kMaxPorts> analog_state{};
 int16_t pointer_x = 0;
 int16_t pointer_y = 0;
 bool pointer_pressed = false;
@@ -140,7 +140,7 @@ int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id)
     }
     if (device == kAnalogDevice && index < 2 && id < 2) {
         std::lock_guard<std::mutex> lock(media_mutex);
-        return analog_state[port][index];
+        return analog_state[port][index * 2 + id];
     }
     if (device == kPointerDevice && port == 0) {
         std::lock_guard<std::mutex> lock(media_mutex);
@@ -352,7 +352,7 @@ Java_com_example_emulator_LibretroNative_nativeSetAnalogAxis(JNIEnv*, jobject, j
     if (port < 0 || port >= static_cast<jint>(kMaxPorts) ||
         stick < 0 || stick >= 2 || axis < 0 || axis >= 2) return;
     std::lock_guard<std::mutex> lock(media_mutex);
-    analog_state[static_cast<size_t>(port)][static_cast<size_t>(stick * 1 + axis)] =
+    analog_state[static_cast<size_t>(port)][static_cast<size_t>(stick * 2 + axis)] =
         static_cast<int16_t>(std::max(-32768, std::min(32767, value)));
 }
 
