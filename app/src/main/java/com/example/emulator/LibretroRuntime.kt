@@ -36,6 +36,7 @@ class LibretroRuntime(
     enum class State { UNAVAILABLE, READY, GAME_LOADED, CLOSED }
 
     private var native: LibretroNative? = null
+    private var reusableVideoBuffer: ByteBuffer? = null
     private val coreFile: File
         get() = File(frontendLibrary.parentFile, coreSpec.libraryFileName)
 
@@ -90,10 +91,30 @@ class LibretroRuntime(
         check(native?.nativeRunFrame() == true) { "Native Libretro core is not running." }
     }
 
+    /** Returns the core's negotiated video and audio timing after a ROM is loaded. */
+    fun getAvInfo(): Result<LibretroAvInfo> = runCatching {
+        check(state == State.GAME_LOADED) { "Load a ROM before reading AV information." }
+        val values = checkNotNull(native).nativeGetAvInfo()
+        require(values.size >= 7) { "Native frontend returned invalid AV metadata." }
+        LibretroAvInfo(
+            baseWidth = values[0].toInt(),
+            baseHeight = values[1].toInt(),
+            maxWidth = values[2].toInt(),
+            maxHeight = values[3].toInt(),
+            aspectRatio = values[4].toFloat(),
+            framesPerSecond = values[5],
+            sampleRate = values[6]
+        ).also {
+            require(it.baseWidth > 0 && it.baseHeight > 0 && it.framesPerSecond > 0.0 &&
+                it.sampleRate > 0.0) { "Core returned invalid AV dimensions or timing." }
+        }
+    }
+
     /**
      * Returns the latest core frame, or null before the core has produced one.
-     * The returned direct buffer is a snapshot and remains valid after the next emulated frame.
+     * The direct buffer is reused and remains valid only until the next copyVideoFrame call.
      */
+    @Synchronized
     fun copyVideoFrame(): Result<LibretroVideoFrame?> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before reading video." }
         val bridge = checkNotNull(native)
@@ -105,7 +126,13 @@ class LibretroRuntime(
         val pixelFormat = info[3]
         if (width <= 0 || height <= 0 || pitch <= 0) return@runCatching null
         val byteCount = Math.multiplyExact(pitch, height)
-        val pixels = ByteBuffer.allocateDirect(byteCount)
+        var pixels = reusableVideoBuffer
+        if (pixels == null || pixels.capacity() < byteCount) {
+            pixels = ByteBuffer.allocateDirect(byteCount)
+            reusableVideoBuffer = pixels
+        }
+        pixels.clear()
+        pixels.limit(byteCount)
         val copied = bridge.nativeCopyVideoFrame(pixels)
         if (copied <= 0) return@runCatching null
         require(copied <= byteCount) { "Native frontend copied more video data than the buffer can hold." }
@@ -146,6 +173,7 @@ class LibretroRuntime(
     fun close() {
         native?.nativeClose()
         native = null
+        reusableVideoBuffer = null
         state = State.CLOSED
     }
 }
