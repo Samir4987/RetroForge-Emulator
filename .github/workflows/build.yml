@@ -13,7 +13,7 @@ permissions:
 jobs:
   build-android-apk:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
 
     env:
       ANDROID_HOME: /home/runner/android-sdk
@@ -185,6 +185,12 @@ jobs:
           set -euxo pipefail
           export PATH="$ANDROID_SDK_ROOT/cmake/3.22.1/bin:$PATH"
           bash scripts/build-mgba-android.sh
+
+      - name: Build and package pinned Mupen64Plus-Next GLES3 core
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash scripts/build-mupen64plus-android.sh
 
       - name: Build debug APK
         shell: bash
