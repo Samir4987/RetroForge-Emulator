@@ -124,6 +124,7 @@ fun EmulatorScreen(
     // Intercept back button to return safely to Library
     BackHandler {
         emulatorCore.isPaused = true
+        n3dsAudioOutput?.pause()
         coroutineScope.launch {
             romLibraryRepository?.recordPlayStats(game.id, emulatorCore.playTimeSeconds)
         }
@@ -244,7 +245,9 @@ fun EmulatorScreen(
                         n3dsAudioOutput?.pause()
                     }
                 }
-                delay(n3dsFrameIntervalMs)
+                val pacedDelay = (n3dsFrameIntervalMs.toFloat() / speedMultiplier)
+                    .roundToInt().coerceAtLeast(1).toLong()
+                delay(pacedDelay)
             } else {
                 emulatorCore.tick()
                 frameTicker = emulatorCore.frameCounter
@@ -284,6 +287,7 @@ fun EmulatorScreen(
                         IconButton(
                             onClick = {
                                 emulatorCore.isPaused = true
+                                n3dsAudioOutput?.pause()
                                 onBackToLibrary()
                             },
                             modifier = Modifier.testTag("button_back_to_library")
@@ -350,7 +354,14 @@ fun EmulatorScreen(
 
                         // Pause Toggle
                         IconButton(
-                            onClick = { emulatorCore.isPaused = !emulatorCore.isPaused },
+                            onClick = {
+                emulatorCore.isPaused = !emulatorCore.isPaused
+                if (emulatorCore.isPaused) {
+                    n3dsAudioOutput?.pause()
+                } else if (!n3dsLifecyclePaused) {
+                    n3dsAudioOutput?.resume()
+                }
+            },
                             modifier = Modifier.testTag("button_pause_toggle")
                         ) {
                             Icon(
@@ -501,7 +512,8 @@ fun EmulatorScreen(
                     }
                 },
                 isFastForwardActive = emulatorCore.fastForwardMultiplier > 1f,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                rewindEnabled = !isNintendo3ds
             )
         }
 

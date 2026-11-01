@@ -27,8 +27,8 @@ data class LibretroVideoFrame(
 /**
  * Boundary between the Android UI and the Libretro JNI frontend.
  *
- * This runtime transports actual core video/audio/input data. The caller still
- * owns pixel conversion/rendering and feeding drained PCM into Android AudioTrack.
+ * This runtime transports actual core video/audio/input data. The Android
+ * emulator screen converts frames, routes input, and feeds drained PCM to AudioTrack.
  */
 class LibretroRuntime(
     private val frontendLibrary: File,

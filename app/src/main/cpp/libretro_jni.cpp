@@ -528,6 +528,9 @@ Java_com_example_emulator_LibretroNative_nativeOpen(
     }
     game_loaded = true;
     get_av_info(&core_av_info);
+    // EGL contexts are thread-affine. nativeOpen runs during ROM loading;
+    // release here so the frame worker can make the context current itself.
+    if (hw_context_ready) release_gles_current();
     return nullptr;
 }
 

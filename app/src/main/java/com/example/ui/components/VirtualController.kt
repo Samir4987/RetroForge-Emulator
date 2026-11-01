@@ -66,7 +66,8 @@ fun VirtualController(
     isFastForwardActive: Boolean,
     hapticsEnabled: Boolean = true,
     opacity: Float = 0.95f,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    rewindEnabled: Boolean = true
 ) {
     val context = LocalContext.current
     val vibrator = remember {
@@ -123,6 +124,7 @@ fun VirtualController(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (rewindEnabled) {
                     // Rewind Hold Button
                     var isRewindHeld by remember { mutableStateOf(false) }
                     Surface(
@@ -165,6 +167,8 @@ fun VirtualController(
                                 fontFamily = FontFamily.Monospace
                             )
                         }
+                    }
+
                     }
 
                     // Fast Forward Turbo Toggle Button
