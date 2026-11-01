@@ -229,16 +229,17 @@ fun EmulatorScreen(
             // Pace against the core's AV timing instead of assuming every system is 62.5 FPS.
             // Fractional deadlines avoid cumulative drift for rates such as 59.826 FPS.
             val frameRate = ndsRuntime?.frameRate ?: 60.0
-            val speed = emulatorCore.fastForwardMultiplier.toDouble().coerceIn(1.0, 8.0)
+            val speed = emulatorCore.fastForwardMultiplier.toDouble().coerceIn(1.0, 1000.0)
             val frameIntervalNs = (1_000_000_000.0 / (frameRate * speed)).toLong().coerceAtLeast(1L)
             nextFrameDeadlineNs += frameIntervalNs
             val remainingNs = nextFrameDeadlineNs - System.nanoTime()
-            if (remainingNs > 0L) {
-                delay(((remainingNs + 999_999L) / 1_000_000L).coerceAtLeast(1L))
+            if (remainingNs >= 1_000_000L) {
+                delay((remainingNs / 1_000_000L).coerceAtLeast(1L))
             } else {
-                // Avoid a busy catch-up loop if rendering falls behind the target cadence.
-                nextFrameDeadlineNs = System.nanoTime()
-                delay(1L)
+                // Sub-millisecond targets (especially experimental speeds) are best-effort:
+                // run as quickly as the device/core can sustain without blocking the UI thread.
+                if (remainingNs < 0L) nextFrameDeadlineNs = System.nanoTime()
+                kotlinx.coroutines.yield()
             }
         }
     }
@@ -348,12 +349,35 @@ fun EmulatorScreen(
                                 expanded = showSpeedMenu,
                                 onDismissRequest = { showSpeedMenu = false }
                             ) {
-                                listOf(1.0f, 1.5f, 2.0f, 4.0f, 8.0f).forEach { spd ->
+                                listOf(1.0f, 2.0f, 4.0f, 8.0f, 16.0f).forEach { spd ->
                                     DropdownMenuItem(
-                                        text = { Text("${spd}x Speed") },
+                                        text = { Text("${spd.toInt()}x Speed") },
                                         onClick = {
                                             speedMultiplier = spd
                                             emulatorCore.fastForwardMultiplier = spd
+                                            showSpeedMenu = false
+                                        }
+                                    )
+                                }
+                                HorizontalDivider()
+                                Text(
+                                    text = "EXPERIMENTAL",
+                                    color = Color(0xFFFFB74D),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                                )
+                                listOf(32, 64, 128, 256, 512, 1000).forEach { requestedSpeed ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                "${requestedSpeed}x Speed • Experimental",
+                                                color = Color(0xFFFFB74D)
+                                            )
+                                        },
+                                        onClick = {
+                                            speedMultiplier = requestedSpeed.toFloat()
+                                            emulatorCore.fastForwardMultiplier = requestedSpeed.toFloat()
                                             showSpeedMenu = false
                                         }
                                     )
