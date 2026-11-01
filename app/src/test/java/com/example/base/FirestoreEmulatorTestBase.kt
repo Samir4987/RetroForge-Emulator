@@ -5,7 +5,6 @@ import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.MemoryCacheSettings
@@ -36,7 +35,7 @@ abstract class FirestoreEmulatorTestBase {
     databaseId = if (resId != 0) context.getString(resId) else "ai-studio-android-retrofor-3406fd5c-9026-4054-b4cc-3cb29757e3c1"
 
     val app = if (FirebaseApp.getApps(context).isEmpty()) {
-      val newApp = FirebaseApp.initializeApp(
+      FirebaseApp.initializeApp(
         context,
         FirebaseOptions.Builder()
           .setApplicationId("com.aistudio.retroforge.gkqwnx")
@@ -44,21 +43,20 @@ abstract class FirestoreEmulatorTestBase {
           .setApiKey("fake-api-key-for-emulator")
           .build()
       )
-      val newFirestore = FirebaseFirestore.getInstance(newApp, databaseId)
-      newFirestore.useEmulator(EMULATOR_HOST, FIRESTORE_PORT)
-      newFirestore.firestoreSettings = FirebaseFirestoreSettings.Builder()
-        .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
-        .build()
-
-      val newAuth = FirebaseAuth.getInstance(newApp)
-      newAuth.useEmulator(EMULATOR_HOST, AUTH_PORT)
-      newApp
     } else {
       FirebaseApp.getInstance()
     }
 
+    // FirebaseApp can survive between Robolectric test classes. Configure the
+    // emulator endpoints on every setup path rather than only on first creation.
     firestore = FirebaseFirestore.getInstance(app, databaseId)
+    firestore.useEmulator(EMULATOR_HOST, FIRESTORE_PORT)
+    firestore.firestoreSettings = FirebaseFirestoreSettings.Builder()
+      .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
+      .build()
+
     auth = FirebaseAuth.getInstance(app)
+    auth.useEmulator(EMULATOR_HOST, AUTH_PORT)
   }
 
   @After
@@ -70,7 +68,7 @@ abstract class FirestoreEmulatorTestBase {
     withTimeout(AUTH_TIMEOUT_MS) {
       val result = try {
         auth.signInWithEmailAndPassword(email, DEFAULT_PASSWORD).await()
-      } catch (unused: FirebaseAuthInvalidUserException) {
+      } catch (unused: com.google.firebase.auth.FirebaseAuthInvalidUserException) {
         auth.createUserWithEmailAndPassword(email, DEFAULT_PASSWORD).await()
       }
       checkNotNull(result.user?.uid) { "User auth failed" }
