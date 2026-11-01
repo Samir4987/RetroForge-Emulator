@@ -41,6 +41,12 @@ data class LibretroCoreSpec(
                 extensions = setOf("nds", "ds")
             ),
             LibretroCoreSpec(
+                system = RetroSystem.N3DS,
+                libraryFileName = "azahar_libretro.so",
+                upstreamUrl = "https://github.com/azahar-emu/azahar",
+                extensions = setOf("3ds", "cci", "cxi")
+            ),
+            LibretroCoreSpec(
                 system = RetroSystem.N64,
                 libraryFileName = "mupen64plus_next_libretro_android.so",
                 upstreamUrl = "https://github.com/libretro/mupen64plus-libretro-nx",
