@@ -356,9 +356,9 @@ void close_core() {
     game_loaded = false;
     if (initialized && core_deinit) core_deinit();
     initialized = false;
+    destroy_gles_context();
     if (core) dlclose(core);
     core = nullptr;
-    destroy_gles_context();
     rom_data.clear();
     reset_symbols();
     reset_frontend_state();
