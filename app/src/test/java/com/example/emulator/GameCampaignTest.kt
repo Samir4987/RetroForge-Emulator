@@ -55,4 +55,32 @@ class GameCampaignTest {
         campaign.recordObjective(1)
         assertEquals(campaign.view.objectiveGoal, campaign.view.objectiveProgress)
     }
+
+    @Test
+    fun completedCampaignSnapshotRestoresTheEnding() {
+        val campaign = GameCampaign.forSystem(RetroSystem.N64)
+        repeat(3) {
+            campaign.recordObjective(campaign.view.objectiveGoal)
+            repeat(campaign.view.bossHealth) { campaign.damageBoss() }
+        }
+        assertTrue(campaign.view.completed)
+
+        val restored = GameCampaign.forSystem(RetroSystem.N64)
+        restored.restore(campaign.snapshot())
+        assertTrue(restored.view.completed)
+        assertFalse(restored.view.bossActive)
+        assertEquals(campaign.view.message, restored.view.message)
+    }
+
+    @Test
+    fun bossCannotBeDamagedBeforeItAppearsAndInvalidProgressIsIgnored() {
+        val campaign = GameCampaign.forSystem(RetroSystem.GB)
+        campaign.damageBoss(10)
+        campaign.recordObjective(0)
+        campaign.recordObjective(-5)
+        assertFalse(campaign.view.bossActive)
+        assertEquals(0, campaign.view.objectiveProgress)
+        assertEquals(0, campaign.view.bossHealth)
+    }
+
 }
