@@ -59,8 +59,12 @@ jobs:
           test -s .build/azahar-artifacts/arm64-v8a/azahar_libretro.so
           test -s .build/azahar-artifacts/arm64-v8a/AZAHAR-LICENSE.txt
           test -s .build/azahar-artifacts/arm64-v8a/AZAHAR-REVISION.txt
+          test -s .build/azahar-artifacts/arm64-v8a/AZAHAR-SHA256.txt
           grep -qx "01623d2fb707317410225c0eced82e3e0c84edc1" \
             .build/azahar-artifacts/arm64-v8a/AZAHAR-REVISION.txt
+          ACTUAL_SHA="$(sha256sum .build/azahar-artifacts/arm64-v8a/azahar_libretro.so | cut -d' ' -f1)"
+          EXPECTED_SHA="$(cat .build/azahar-artifacts/arm64-v8a/AZAHAR-SHA256.txt)"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
 
       - name: Bootstrap missing Gradle wrapper JAR
         shell: bash
@@ -95,7 +99,50 @@ jobs:
           set -euxo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          unzip -l "$APK" | grep -E 'lib/arm64-v8a/azahar_libretro\.so$'
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/azahar_libretro\.so
+
+      - name: Upload 3DS-enabled debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroForge-Android-APK-with-Azahar-3DS
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/libc\+\+_shared\.so
+
+      - name: Upload 3DS-enabled debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroForge-Android-APK-with-Azahar-3DS
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+          unzip -l "$APK" | grep -E 'assets/licenses/azahar/AZAHAR-LICENSE\.txt
+
+      - name: Upload 3DS-enabled debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroForge-Android-APK-with-Azahar-3DS
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+          unzip -l "$APK" | grep -E 'assets/licenses/azahar/AZAHAR-REVISION\.txt
+
+      - name: Upload 3DS-enabled debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroForge-Android-APK-with-Azahar-3DS
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
           ls -lh "$APK"
 
       - name: Upload 3DS-enabled debug APK

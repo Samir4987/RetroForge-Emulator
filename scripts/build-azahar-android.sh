@@ -98,7 +98,7 @@ grep -Eq 'Machine:[[:space:]]+AArch64' <<<"${elf_header}" || {
   echo "Azahar core is not an AArch64/arm64-v8a binary." >&2
   exit 1
 }
-printf '%s\\n' "${elf_header}" | grep -E 'Class:|Machine:'
+printf '%s\n' "${elf_header}" | grep -E 'Class:|Machine:'
 symbols="$("${readelf_tool}" --dyn-syms --wide "${core_path}")"
 for symbol in retro_api_version retro_set_environment retro_set_video_refresh retro_set_audio_sample retro_set_audio_sample_batch retro_set_input_poll retro_set_input_state retro_init retro_deinit retro_get_system_info retro_get_system_av_info retro_load_game retro_run retro_unload_game; do
   if ! grep -Eq "[[:space:]]${symbol}$" <<<"${symbols}"; then
@@ -110,4 +110,6 @@ done
 install -m 0644 "${core_path}" "${OUTPUT_DIR}/azahar_libretro.so"
 cp "${SOURCE_DIR}/LICENSE.txt" "${OUTPUT_DIR}/AZAHAR-LICENSE.txt"
 printf '%s\n' "${AZAHAR_REVISION}" > "${OUTPUT_DIR}/AZAHAR-REVISION.txt"
+sha256sum "${OUTPUT_DIR}/azahar_libretro.so" | awk '{print $1}' > "${OUTPUT_DIR}/AZAHAR-SHA256.txt"
 echo "Verified core artifact: ${OUTPUT_DIR}/azahar_libretro.so"
+echo "Verified SHA-256: $(cat "${OUTPUT_DIR}/AZAHAR-SHA256.txt")"
