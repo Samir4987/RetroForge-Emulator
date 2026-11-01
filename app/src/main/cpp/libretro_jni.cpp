@@ -48,7 +48,6 @@ struct HwRenderCallback {
     bool debug_context;
 };
 constexpr unsigned kSetHwRender = 14;
-constexpr unsigned kSetHwSharedContext = 44 | 0x10000;
 constexpr unsigned kGetPreferredHwRender = 56;
 constexpr unsigned kHwContextOpenGles3 = 4;
 constexpr unsigned kGlSurfaceSize = 2048;
@@ -207,7 +206,6 @@ bool environment(unsigned command, void* data) {
         video_pixel_format = format.format;
         return true;
     }
-    if (command == kSetHwSharedContext) return true;
     if (command == kGetPreferredHwRender && data) {
         *static_cast<unsigned*>(data) = kHwContextOpenGles3;
         return true;
