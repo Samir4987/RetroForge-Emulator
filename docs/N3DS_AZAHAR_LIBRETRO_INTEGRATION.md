@@ -48,9 +48,15 @@ Azahar's repository declares GPL-3.0. Before distributing an APK containing its 
 
 Do not bundle commercial game images, copyrighted console firmware, or keys. Any optional system data must be obtained and supplied lawfully by the user; document requirements without distributing those files.
 
-## Implemented in RetroForge\n\n- Added `RetroSystem.N3DS` metadata with dual-screen and analog-stick flags. The top-screen 400×240 dimensions are metadata only; the bottom-screen layout still needs frontend work.\n- Registered the pinned Azahar Libretro candidate as `azahar_libretro.so` for `.3ds`, `.cci`, and `.cxi` files. This is a candidate registration, not proof the binary is packaged or playable.\n- Added unit tests for system lookup, extension lookup, and dual-screen/input metadata.\n- Added `scripts/build-azahar-android.sh` and a separate, manually dispatchable / branch-scoped GitHub Actions workflow. The build script pins source and recursively updates submodules, then checks required Libretro exports before uploading the library with license and revision metadata.\n\n## Local APK staging
+## Implemented in RetroForge\n\n- Added `RetroSystem.N3DS` metadata with dual-screen and analog-stick flags. The top-screen 400×240 dimensions are metadata only; the bottom-screen layout still needs frontend work.\n- Registered the pinned Azahar Libretro candidate as `azahar_libretro.so` for `.3ds`, `.cci`, and `.cxi` files. This is a candidate registration, not proof the binary is packaged or playable.\n- Added unit tests for system lookup, extension lookup, and dual-screen/input metadata.\n- Added `scripts/build-azahar-android.sh` and a separate, manually dispatchable / branch-scoped GitHub Actions workflow. The build script pins source and recursively updates submodules, then checks required Libretro exports before uploading the library with license and revision metadata.\n\n## APK packaging workflow
 
-The core is intentionally not committed to Git. After obtaining the successful `azahar-libretro-android-arm64` Actions artifact and extracting `azahar_libretro.so` to `.build/azahar-artifacts/arm64-v8a/azahar_libretro.so`, run:
+The core is intentionally not committed to Git. The successful Azahar build run (`41200970352`) uploaded the `azahar-libretro-android-arm64` artifact, including the native library and license/revision metadata. To package it:
+
+1. Open the **Package Nintendo 3DS core into Android APK** workflow on `feature/n3ds-android-integration`.
+2. Run it manually and provide the successful Azahar build workflow run ID in `azahar_run_id`.
+3. The workflow downloads the artifact, checks the pinned revision and license files, runs `:app:stageAzaharCore :app:assembleDebug`, verifies that `lib/arm64-v8a/azahar_libretro.so` is inside the APK, and uploads `RetroForge-Android-APK-with-Azahar-3DS`.
+
+For local packaging, extract `azahar_libretro.so` to `.build/azahar-artifacts/arm64-v8a/azahar_libretro.so` and keep `AZAHAR-LICENSE.txt` plus `AZAHAR-REVISION.txt` beside it, then run:
 
 ```bash
 ./gradlew :app:stageAzaharCore :app:assembleDebug
@@ -62,7 +68,7 @@ The staging task copies the library into a generated `jniLibs/arm64-v8a` source 
 
 - [x] Build the pinned Azahar Libretro core for Android ARM64-v8a in CI (run `41200970352`, successful).
 - [x] Verify the produced shared object exports the required Libretro entry points in the build script.
-- [ ] Stage it into generated `jniLibs/arm64-v8a` with `:app:stageAzaharCore`, then package it into the APK and confirm ABI loading.
+- [x] Add a dedicated workflow to download the verified core artifact, stage it, assemble the APK, and verify the ARM64 library entry (workflow added; packaging run still pending).
 - [x] Add a dedicated Nintendo 3DS system/core spec and unit tests without mapping unknown systems to 3DS.
 - [ ] Implement real video, audio, input, dual-screen layout, and touch callbacks.
 - [ ] Test legal homebrew content on a physical Android device.
