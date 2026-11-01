@@ -574,7 +574,8 @@ fun EmulatorScreen(
                     coroutineScope.launch {
                         val success = if (isNintendo3ds) {
                             withContext(Dispatchers.IO) {
-                                n3dsRuntime?.loadStateBase64(dto.stateData)?.isSuccess == true
+                                val serialized = n3dsSaveStore?.load(game.id, dto.slot)
+                                serialized != null && n3dsRuntime?.loadStateBytes(serialized)?.isSuccess == true
                             }
                         } else {
                             emulatorCore.loadSaveStateBase64(dto.stateData)

@@ -35,7 +35,7 @@ The pin and build approach follow the upstream Libretro Android CI configuration
 - Virtual D-pad, A/B/X/Y, Start/Select, L/R, Circle Pad axes, and bottom-screen pointer input are forwarded to Libretro.
 - PCM samples are sent to Android AudioTrack. Partial writes are retained in a bounded pending buffer.
 - App lifecycle pause/resume pauses native frame execution and audio output.
-- Save-state serialization and restore are exposed when the core exports all three Libretro serialization functions. The save-slot UI uses those APIs for N3DS rather than serializing the demo simulator.
+- Save-state serialization and restore are exposed when the core exports all three Libretro serialization functions. Large 3DS snapshots are stored atomically in app-private files, not Firestore documents (which have a small per-document size limit); slot metadata is rebuilt from local files on launch.
 - The scanned ROM's persisted URI is carried into the game model so the selected ROM can be copied into app-private cache before native loading.
 
 ## Known limitations and validation still required
@@ -45,7 +45,7 @@ Implementation does not mean the system is fully supported yet.
 1. **Physical-device gameplay is not verified.** Install the 3DS-enabled APK and test lawful homebrew on a real ARM64 Android device.
 2. **The GLES3/EGL path uses CPU readback.** It is a compatibility-oriented first frontend, not a zero-copy Android display surface. Measure frame pacing, heat, and memory use on devices.
 3. **System data/firmware is not bundled.** Users must supply any required system data or keys lawfully. The runtime provides app-private system/save directories, but a user-facing setup and diagnostics flow remains to be validated.
-4. **Save-state support is conditional.** It is exposed only when the core provides `retro_serialize_size`, `retro_serialize`, and `retro_unserialize`; round-trip testing against the pinned core is pending.
+4. **Save-state support is conditional and local-only.** It is exposed only when the core provides `retro_serialize_size`, `retro_serialize`, and `retro_unserialize`. Large snapshots are stored under app-private files and are not cloud-synced; round-trip testing against the pinned core is pending.
 5. **Physical gamepad mapping is not complete.** The on-screen controller and touch input are forwarded; Android hardware-controller key/axis mapping still needs implementation and device testing.
 6. **Packaging must be rerun against the latest verified Azahar artifact.** The manual workflow must produce an APK containing the core, `libc++_shared.so`, and the bundled license/revision assets.
 7. **Licensing review remains open.** Azahar declares GPL-3.0. Before distributing the APK, review combined-work obligations and provide required corresponding source and notices. Do not describe the resulting distribution as proprietary or license-free.

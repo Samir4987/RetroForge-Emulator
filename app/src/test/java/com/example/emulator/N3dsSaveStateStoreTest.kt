@@ -35,7 +35,8 @@ class N3dsSaveStateStoreTest {
             val store = N3dsSaveStateStore(root)
             store.save("../../outside", 0, byteArrayOf(7))
             assertEquals(listOf(0L), store.listSlots("../../outside"))
-            assertFalse(root.parentFile.resolve("outside").exists())
+            assertEquals(1, root.listFiles().orEmpty().size)
+            assertFalse(root.listFiles().orEmpty().single().canonicalPath.contains("/outside/"))
         } finally {
             root.deleteRecursively()
         }
