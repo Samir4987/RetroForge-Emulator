@@ -28,6 +28,7 @@ bool initialized = false;
 bool game_loaded = false;
 std::vector<uint8_t> rom_data;
 
+using ApiVersion = unsigned (*)();
 using SetEnvironment = void (*)(retro_environment_t);
 using SetVideo = void (*)(retro_video_refresh_t);
 using SetAudio = void (*)(retro_audio_sample_t);
@@ -40,6 +41,7 @@ using LoadGame = bool (*)(const GameInfo*);
 using RunFrame = void (*)();
 using UnloadGame = void (*)();
 using GetAvInfo = void (*)(AvInfo*);
+ApiVersion api_version = nullptr;
 SetEnvironment set_environment = nullptr;
 SetVideo set_video = nullptr;
 SetAudio set_audio = nullptr;
@@ -76,6 +78,7 @@ template <typename T> bool symbol(T& out, const char* name) {
 }
 
 void reset_symbols() {
+    api_version = nullptr;
     set_environment = nullptr;
     set_video = nullptr;
     set_audio = nullptr;
@@ -125,6 +128,7 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
     }
 
     bool ok =
+        symbol(api_version, "retro_api_version") &&
         symbol(set_environment, "retro_set_environment") &&
         symbol(set_video, "retro_set_video_refresh") &&
         symbol(set_audio, "retro_set_audio_sample") &&
@@ -144,6 +148,13 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
         return env->NewStringUTF("Core is missing required Libretro API symbols.");
     }
 
+    // Libretro API version 1 is the ABI implemented by this frontend.
+    if (api_version() != 1U) {
+        close_core();
+        env->ReleaseStringUTFChars(rom_path, native_rom_path);
+        return env->NewStringUTF("Unsupported Libretro API version; expected version 1.");
+    }
+
     set_environment(environment);
     set_video(video_refresh);
     set_audio(audio_sample);
@@ -155,6 +166,11 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
 
     SystemInfo info{};
     get_system_info(&info);
+    if (!info.name || !info.extensions) {
+        env->ReleaseStringUTFChars(rom_path, native_rom_path);
+        close_core();
+        return env->NewStringUTF("Core returned incomplete system information.");
+    }
     GameInfo game{native_rom_path, nullptr, 0, nullptr};
 
     if (!info.need_fullpath) {
