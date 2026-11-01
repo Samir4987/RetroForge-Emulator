@@ -100,7 +100,7 @@ fun RetroScreenView(
                         bitmap = bottomScreenBitmap,
                         system = system,
                         enableScanlines = enableScanlines,
-                                                frameVersion = frameVersion,
+                        frameVersion = frameVersion,
                         modifier = Modifier.fillMaxWidth(0.92f),
                         onTouchInput = onTouchInput,
                         touchLabel = true
@@ -126,7 +126,7 @@ fun RetroScreenView(
                         bitmap = bottomScreenBitmap,
                         system = system,
                         enableScanlines = enableScanlines,
-                                                frameVersion = frameVersion,
+                        frameVersion = frameVersion,
                         modifier = Modifier.weight(1f),
                         onTouchInput = onTouchInput,
                         touchLabel = true
@@ -141,7 +141,7 @@ fun RetroScreenView(
                         bitmap = screenBitmap,
                         system = system,
                         enableScanlines = enableScanlines,
-                                                frameVersion = frameVersion,
+                        frameVersion = frameVersion,
                         modifier = Modifier.fillMaxWidth(0.92f),
                         isPaused = isPaused,
                         isRewinding = isRewinding,
@@ -157,7 +157,7 @@ fun RetroScreenView(
                         bitmap = bottomScreenBitmap,
                         system = system,
                         enableScanlines = enableScanlines,
-                                                frameVersion = frameVersion,
+                        frameVersion = frameVersion,
                         modifier = Modifier.fillMaxWidth(0.92f),
                         onTouchInput = onTouchInput,
                         touchLabel = true
@@ -173,7 +173,7 @@ fun RetroScreenView(
                     bitmap = screenBitmap,
                     system = system,
                     enableScanlines = enableScanlines,
-                                            frameVersion = frameVersion,
+                        frameVersion = frameVersion,
                     modifier = Modifier.fillMaxWidth(),
                     isPaused = isPaused,
                     isRewinding = isRewinding,
@@ -238,9 +238,7 @@ private fun DisplayPanel(
             .background(Color.Black)
     ) {
         key(frameVersion) {
-            key(frameVersion) {
             ScreenCanvas(bitmap = bitmap, enableScanlines = enableScanlines)
-        }
         }
         if (isPaused || isRewinding || fastForwardMultiplier > 1f) {
             ScreenHudOverlay(
