@@ -47,6 +47,7 @@ class EmulatorCore(
     private var gameTick = 0
     private lateinit var campaign: GameCampaign
     private val collectedGems = mutableSetOf<Int>()
+    private val defeatedDungeonSentries = mutableSetOf<Int>()
     private var touchWasActive = false
 
     // N64 3D engine state
@@ -79,6 +80,7 @@ class EmulatorCore(
         campaign = GameCampaign.forSystem(currentSystem)
         campaign.reset()
         collectedGems.clear()
+        defeatedDungeonSentries.clear()
         touchWasActive = false
         recreateBuffers()
         resetGameState()
@@ -140,7 +142,10 @@ class EmulatorCore(
         for (s in 0 until steps) {
             val previousLevel = campaign.view.level
             updateSimulation()
-            if (campaign.view.level != previousLevel) collectedGems.clear()
+            if (campaign.view.level != previousLevel) {
+                collectedGems.clear()
+                defeatedDungeonSentries.clear()
+            }
             frameCounter++
             if (frameCounter % 60 == 0L) {
                 playTimeSeconds++
@@ -178,8 +183,20 @@ class EmulatorCore(
 
         if (inputState.buttonA) {
             audioSynthesizer.playLaser()
-            if (campaign.view.bossActive) campaign.damageBoss() else campaign.recordObjective()
-            score += 10
+            if (campaign.view.bossActive) {
+                campaign.damageBoss()
+                score += 10
+            } else {
+                val sentries = listOf(36f to 36f, 120f to 44f, 80f to 108f, 40f to 104f, 120f to 104f)
+                val target = sentries.indices.firstOrNull { index ->
+                    index !in defeatedDungeonSentries && kotlin.math.hypot(playerX - sentries[index].first, playerY - sentries[index].second) < 19f
+                }
+                if (target != null) {
+                    defeatedDungeonSentries.add(target)
+                    campaign.recordObjective()
+                    score += 10
+                }
+            }
             inputState.buttonA = false
         }
         if (inputState.buttonB) {
@@ -190,8 +207,8 @@ class EmulatorCore(
 
     private fun updateGbcSimulation() {
         // Platformer gravity and jump
-        playerVy += 0.45f // gravity
-        if (playerVy > 5f) playerVy = 5f
+        playerVy += 0.40f // gravity
+        if (playerVy > 6f) playerVy = 6f
         playerY += playerVy
 
         val floorY = 110f
@@ -204,7 +221,7 @@ class EmulatorCore(
         if (inputState.dpadRight) playerX = (playerX + 2.2f).coerceAtMost(150f)
 
         if (inputState.buttonA && playerY >= floorY) {
-            playerVy = -6.2f
+            playerVy = -8.0f
             audioSynthesizer.playJump()
             score += 5
             inputState.buttonA = false
@@ -744,6 +761,14 @@ class EmulatorCore(
             put("lap", lap)
             put("pitch", pitch.toDouble())
             put("yaw", yaw.toDouble())
+            if (::campaign.isInitialized) {
+                val campaignState = campaign.snapshot()
+                put("campaignStageIndex", campaignState.stageIndex)
+                put("campaignProgress", campaignState.progress)
+                put("campaignBossHealth", campaignState.bossHealth)
+                put("campaignBossActive", campaignState.bossActive)
+                put("campaignCompleted", campaignState.completed)
+            }
         }.toString()
 
         val pixels = IntArray(screenBitmap.width * screenBitmap.height)
@@ -773,6 +798,17 @@ class EmulatorCore(
             lap = json.optInt("lap", lap)
             pitch = json.optDouble("pitch", pitch.toDouble()).toFloat()
             yaw = json.optDouble("yaw", yaw.toDouble()).toFloat()
+            if (::campaign.isInitialized && json.has("campaignStageIndex")) {
+                campaign.restore(
+                    CampaignSnapshot(
+                        stageIndex = json.optInt("campaignStageIndex", 0),
+                        progress = json.optInt("campaignProgress", 0),
+                        bossHealth = json.optInt("campaignBossHealth", 0),
+                        bossActive = json.optBoolean("campaignBossActive", false),
+                        completed = json.optBoolean("campaignCompleted", false)
+                    )
+                )
+            }
 
             screenBitmap.setPixels(
                 snapshot.displayBuffer,
