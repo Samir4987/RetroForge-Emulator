@@ -42,6 +42,7 @@ float pointer_x = 0.5f, pointer_y = 0.5f;
 bool pointer_pressed = false;
 std::vector<int16_t> pending_audio;
 double current_sample_rate = 32768.0;
+double current_frame_rate = 60.0;
 std::string system_directory;
 std::string save_directory;
 std::string assets_directory;
@@ -230,7 +231,7 @@ void close_core(JNIEnv* env = nullptr) {
     core = nullptr;
     rom_data.clear(); pending_audio.clear(); core_options.clear();
     current_pixel_format = 1; joypad_mask = 0; pointer_x = 0.5f; pointer_y = 0.5f; pointer_pressed = false;
-    current_sample_rate = 32768.0;
+    current_sample_rate = 32768.0; current_frame_rate = 60.0;
     if (env && java_bridge) env->DeleteWeakGlobalRef(java_bridge);
     java_bridge=nullptr; video_callback=nullptr; audio_callback=nullptr;
     reset_symbols();
@@ -347,12 +348,22 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject bridge,
     } else {
         LOGE("Core reported invalid sample rate %.2f; using %.0f Hz", av_info.sample_rate, current_sample_rate);
     }
+    if (std::isfinite(av_info.fps) && av_info.fps >= 1.0 && av_info.fps <= 240.0) {
+        current_frame_rate = av_info.fps;
+    } else {
+        LOGE("Core reported invalid frame rate %.2f; using %.2f FPS", av_info.fps, current_frame_rate);
+    }
     return nullptr;
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
 Java_com_example_emulator_LibretroNative_nativeGetSampleRate(JNIEnv*, jobject) {
     return current_sample_rate;
+}
+
+extern "C" JNIEXPORT jdouble JNICALL
+Java_com_example_emulator_LibretroNative_nativeGetFrameRate(JNIEnv*, jobject) {
+    return current_frame_rate;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
