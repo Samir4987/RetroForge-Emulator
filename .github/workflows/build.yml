@@ -4,7 +4,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master, feature/gba-core-integration]
+    branches: [main, master, feature/gba-core-integration, feature/n64-mupen64plus-integration]
   pull_request:
 
 permissions:
