@@ -351,12 +351,14 @@ void reset_frontend_state() {
 }
 
 void close_core() {
+    if (hw_context_ready) make_gles_current();
     if (game_loaded && unload_game) unload_game();
     game_loaded = false;
     if (initialized && core_deinit) core_deinit();
     initialized = false;
     if (core) dlclose(core);
     core = nullptr;
+    destroy_gles_context();
     rom_data.clear();
     reset_symbols();
     reset_frontend_state();
@@ -466,7 +468,9 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_emulator_LibretroNative_nativeRunFrame(JNIEnv*, jobject) {
     if (!initialized || !game_loaded || !run_frame) return JNI_FALSE;
+    if (hw_context_ready && !make_gles_current()) return JNI_FALSE;
     run_frame();
+    if (hw_context_ready) release_gles_current();
     return JNI_TRUE;
 }
 
