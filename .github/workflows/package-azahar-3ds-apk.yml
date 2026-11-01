@@ -95,7 +95,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ./gradlew --no-daemon :app:stageAzaharCore :app:assembleDebug
+          ./gradlew --no-daemon :app:stageAzaharCore :app:testDebugUnitTest :app:assembleDebug
 
       - name: Verify packaged ARM64 core, C++ runtime, GPL notice and APK
         shell: bash
