@@ -9,6 +9,7 @@ import java.security.MessageDigest
  * Firestore's document-size limit is too small for typical 3DS state blobs.
  */
 class N3dsSaveStateStore(private val rootDirectory: File) {
+    @Synchronized
     fun save(gameId: String, slot: Long, state: ByteArray): File {
         require(gameId.isNotBlank()) { "Game ID is required." }
         require(slot in 0L..99L) { "Save slot is outside the supported range." }
@@ -33,6 +34,7 @@ class N3dsSaveStateStore(private val rootDirectory: File) {
         return target
     }
 
+    @Synchronized
     fun load(gameId: String, slot: Long): ByteArray? {
         require(slot in 0L..99L) { "Save slot is outside the supported range." }
         val file = File(gameDirectory(gameId), "slot-$slot.state")
@@ -43,6 +45,7 @@ class N3dsSaveStateStore(private val rootDirectory: File) {
         return file.readBytes()
     }
 
+    @Synchronized
     fun listSlots(gameId: String): List<Long> {
         val directory = gameDirectory(gameId)
         if (!directory.isDirectory) return emptyList()
@@ -53,6 +56,7 @@ class N3dsSaveStateStore(private val rootDirectory: File) {
             .sorted()
     }
 
+    @Synchronized
     fun delete(gameId: String, slot: Long): Boolean {
         require(slot in 0L..99L) { "Save slot is outside the supported range." }
         val directory = gameDirectory(gameId)
