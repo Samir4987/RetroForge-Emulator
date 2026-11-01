@@ -154,6 +154,8 @@ class EmulatorCore(
             RetroSystem.GBC -> updateGbcSimulation()
             RetroSystem.GBA -> updateGbaSimulation()
             RetroSystem.NDS -> updateNdsSimulation()
+            // 3DS frames must come from Azahar; never substitute the demo simulator.
+            RetroSystem.N3DS -> Unit
             RetroSystem.N64 -> updateN64Simulation()
         }
     }
@@ -297,6 +299,8 @@ class EmulatorCore(
             RetroSystem.GBC -> renderGbcFrame()
             RetroSystem.GBA -> renderGbaFrame()
             RetroSystem.NDS -> renderNdsFrame()
+            // Native 3DS rendering is supplied by LibretroRuntime, not the demo renderer.
+            RetroSystem.N3DS -> Unit
             RetroSystem.N64 -> renderN64Frame()
         }
     }
