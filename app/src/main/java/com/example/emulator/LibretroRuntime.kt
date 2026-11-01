@@ -3,6 +3,16 @@ package com.example.emulator
 import java.io.File
 import java.nio.ByteBuffer
 
+data class LibretroAvInfo(
+    val baseWidth: Int,
+    val baseHeight: Int,
+    val maxWidth: Int,
+    val maxHeight: Int,
+    val aspectRatio: Float,
+    val framesPerSecond: Double,
+    val sampleRate: Double
+)
+
 data class LibretroVideoFrame(
     val width: Int,
     val height: Int,
@@ -82,7 +92,7 @@ class LibretroRuntime(
 
     /**
      * Returns the latest core frame, or null before the core has produced one.
-     * The buffer is a snapshot and remains valid after the next emulated frame.
+     * The returned direct buffer is a snapshot and remains valid after the next emulated frame.
      */
     fun copyVideoFrame(): Result<LibretroVideoFrame?> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before reading video." }
