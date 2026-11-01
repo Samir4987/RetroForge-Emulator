@@ -228,7 +228,7 @@ fun EmulatorScreen(
 
             // Pace against the core's AV timing instead of assuming every system is 62.5 FPS.
             // Fractional deadlines avoid cumulative drift for rates such as 59.826 FPS.
-            val frameRate = ndsRuntime?.frameRate ?: LibretroRuntime.DEFAULT_FRAME_RATE
+            val frameRate = ndsRuntime?.frameRate ?: 60.0
             val speed = emulatorCore.fastForwardMultiplier.toDouble().coerceIn(1.0, 8.0)
             val frameIntervalNs = (1_000_000_000.0 / (frameRate * speed)).toLong().coerceAtLeast(1L)
             nextFrameDeadlineNs += frameIntervalNs
