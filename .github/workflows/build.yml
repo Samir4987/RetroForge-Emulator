@@ -5,10 +5,32 @@ on:
   workflow_dispatch:
   push:
     branches: [main, master, feature/n3ds-android-integration]
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "firebase.json"
+      - "firestore.rules"
+      - ".github/workflows/build.yml"
   pull_request:
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "firebase.json"
+      - "firestore.rules"
+      - ".github/workflows/build.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: retroforge-android-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-android-apk:
@@ -132,11 +154,21 @@ jobs:
           print("Firebase package and web OAuth client verified.")
           PY
 
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
       - name: Generate Firebase resources
         shell: bash
         run: |
           set -euxo pipefail
-          ./gradlew --no-daemon :app:processDebugGoogleServices
+          ./gradlew --no-daemon --no-configuration-cache :app:processDebugGoogleServices
 
       - name: Check generated Firebase resources
         if: always()
@@ -155,7 +187,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ./gradlew --no-daemon testDebugUnitTest assembleDebug
+          ./gradlew --no-daemon --no-configuration-cache testDebugUnitTest assembleDebug
 
       - name: Verify APK exists
         shell: bash

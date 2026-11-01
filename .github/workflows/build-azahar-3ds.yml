@@ -8,10 +8,13 @@ on:
     paths:
       - "scripts/build-azahar-android.sh"
       - ".github/workflows/build-azahar-3ds.yml"
-      - "docs/N3DS_AZAHAR_LIBRETRO_INTEGRATION.md"
-
+      
 permissions:
   contents: read
+
+concurrency:
+  group: retroforge-azahar-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-azahar-android-arm64:

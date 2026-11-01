@@ -12,6 +12,10 @@ permissions:
   actions: read
   contents: read
 
+concurrency:
+  group: retroforge-azahar-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   package-android-arm64:
     name: Stage Azahar and assemble Android APK
@@ -46,6 +50,16 @@ jobs:
             "platforms;android-36" \
             "build-tools;36.0.0" \
             "ndk;29.0.14206865"
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       - name: Download Azahar build artifact
         uses: actions/download-artifact@v4
@@ -95,7 +109,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ./gradlew --no-daemon :app:stageAzaharCore :app:testDebugUnitTest :app:assembleDebug
+          ./gradlew --no-daemon --no-configuration-cache :app:stageAzaharCore :app:testDebugUnitTest :app:assembleDebug
 
       - name: Verify packaged ARM64 core, C++ runtime, GPL notice and APK
         shell: bash
