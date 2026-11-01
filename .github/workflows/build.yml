@@ -43,7 +43,6 @@ jobs:
             "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0" \
-            "ndk;29.0.14206865" \\
             "ndk;29.0.14206865"
 
       - name: Bootstrap missing Gradle wrapper JAR

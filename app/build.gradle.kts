@@ -174,6 +174,9 @@ tasks.register<Copy>("stageAzaharLicense") {
         require(azaharRevisionInput.readText().trim() == "01623d2fb707317410225c0eced82e3e0c84edc1") {
             "Azahar source revision does not match the pinned integration revision."
         }
+        require(azaharCoreInput.isFile && azaharCoreInput.length() > 0L) {
+            "Azahar core binary is missing from the verified artifact."
+        }
         require(azaharSha256Input.isFile && azaharSha256Input.length() > 0L) {
             "Azahar SHA-256 manifest is missing."
         }
