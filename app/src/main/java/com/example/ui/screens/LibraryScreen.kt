@@ -97,7 +97,7 @@ fun LibraryScreen(
     var isScanning by remember { mutableStateOf(false) }
     var inspectRom by remember { mutableStateOf<ScannedRomEntity?>(null) }
 
-    val systems = listOf("ALL", "GB", "GBC", "GBA", "NDS", "N64")
+    val systems = listOf("ALL", "GB", "GBC", "GBA", "NDS", "N3DS", "N64")
 
     // Collect games reactively from Room Database
     val allRomsFlow = remember(selectedSystemFilter) {
@@ -284,7 +284,7 @@ fun LibraryScreen(
                             }
                         }
                         Text(
-                            text = "Parses headers for GB, GBC, GBA, NDS, and N64",
+                            text = "Parses headers for GB, GBC, GBA, NDS, 3DS, and N64",
                             color = Color(0xFFB0B3C7),
                             fontSize = 11.sp
                         )
@@ -465,6 +465,7 @@ private fun ListRomCardItem(
         RetroSystem.GBC -> Color(0xFF8E44AD)
         RetroSystem.GBA -> Color(0xFF2980B9)
         RetroSystem.NDS -> Color(0xFF16A085)
+        RetroSystem.N3DS -> Color(0xFF6C3483)
         RetroSystem.N64 -> Color(0xFFD35400)
     }
 
