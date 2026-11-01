@@ -38,9 +38,21 @@ abstract class FirestoreEmulatorTestBase {
       FirebaseApp.initializeApp(
         context,
         FirebaseOptions.Builder()
-          .setApplicationId("com.aistudio.retroforge.gkqwnx")
+          // Firebase Auth validates the Firebase App ID format even when all
+          // network traffic is routed to the local Auth emulator. Reuse the
+          // generated Google Services values instead of passing the Android
+          // package name as an App ID.
+          .setApplicationId(
+            context.getString(
+              context.resources.getIdentifier("google_app_id", "string", context.packageName)
+            )
+          )
           .setProjectId(PROJECT_ID)
-          .setApiKey("fake-api-key-for-emulator")
+          .setApiKey(
+            context.getString(
+              context.resources.getIdentifier("google_api_key", "string", context.packageName)
+            )
+          )
           .build()
       )
     } else {
