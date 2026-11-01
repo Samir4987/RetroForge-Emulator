@@ -117,8 +117,8 @@ class GameCampaign private constructor(
                 "Crystal Cavern Color",
                 listOf(
                     CampaignStage("Sunlit Entrance", "Mira follows a trail of glowing crystals into a cavern that has lost its colour.", "Collect the entrance crystals", "Shardling", "A crystal guardian blocks the first passage.", 3, 3),
-                    CampaignStage("Prism Falls", "The collected shards awaken the Prism Falls and reveal a path above the underground river.", "Gather the prism fragments", "Prism Golem", "The golem tests whether Mira can control the cavern's light.", 4, 4),
-                    CampaignStage("Heart of the Cavern", "At the cavern's heart, Mira discovers the colour is fading because its prism core is trapped.", "Restore the heart crystals", "The Dusk Prism", "The Dusk Prism guards the core and the cavern's last light.", 5, 5)
+                    CampaignStage("Prism Falls", "The collected shards awaken the Prism Falls and reveal a path above the underground river.", "Gather the prism fragments", "Prism Golem", "The golem tests whether Mira can control the cavern's light.", 3, 4),
+                    CampaignStage("Heart of the Cavern", "At the cavern's heart, Mira discovers the colour is fading because its prism core is trapped.", "Restore the heart crystals", "The Dusk Prism", "The Dusk Prism guards the core and the cavern's last light.", 3, 5)
                 ),
                 "The prism core shines again. Colour flows through every crystal, and Mira leaves the cavern brighter than she found it."
             )
