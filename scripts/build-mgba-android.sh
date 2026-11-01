@@ -83,7 +83,7 @@ for abi in "${ABIS[@]}"; do
     -DUSE_PNG=OFF \
     -DUSE_ZLIB=OFF \
     -DM_CORE_GBA=ON \
-    -DM_CORE_GB=OFF
+    -DM_CORE_GB=ON
 
   cmake --build "$build_dir" --target mgba_libretro --parallel 2
   core_path="$build_dir/mgba_libretro.so"
