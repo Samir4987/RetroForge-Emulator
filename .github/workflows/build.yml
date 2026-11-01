@@ -4,7 +4,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main, master, feature/n3ds-android-integration]
   pull_request:
 
 permissions:
