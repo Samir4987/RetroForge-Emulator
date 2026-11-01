@@ -75,6 +75,7 @@ fun VirtualController(
     val vibrator = remember {
         context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
     }
+    var isRewindHeld by remember { mutableStateOf(false) }
 
     fun triggerHaptic() {
         if (hapticsEnabled && vibrator != null) {
@@ -128,9 +129,8 @@ fun VirtualController(
                 ) {
                     if (rewindEnabled) {
                         // Rewind Hold Button
-                        var isRewindHeld by remember { mutableStateOf(false) }
                         Surface(
-                        modifier = Modifier
+                            modifier = Modifier
                             .testTag("button_rewind")
                             .height(34.dp)
                             .shadow(2.dp, RoundedCornerShape(17.dp))
@@ -148,29 +148,28 @@ fun VirtualController(
                                     }
                                 )
                             },
-                        color = Color.Transparent
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            color = Color.Transparent
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.History,
-                                contentDescription = "Hold Rewind",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "REWIND",
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.History,
+                                    contentDescription = "Hold Rewind",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "REWIND",
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
                         }
-                    }
-
                     }
 
                     // Fast Forward Turbo Toggle Button
