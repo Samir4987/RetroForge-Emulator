@@ -664,7 +664,7 @@ private fun sendNintendo3dsInput(
         runtime.setJoypadButton(button = button, pressed = pressed)
     }
     runtime.setAnalogAxis(stick = 0, axis = 0, value = (input.stickX * 32_767f).roundToInt())
-    runtime.setAnalogAxis(stick = 0, axis = 1, value = (-input.stickY * 32_767f).roundToInt())
+    runtime.setAnalogAxis(stick = 0, axis = 1, value = (input.stickY * 32_767f).roundToInt())
 }
 
 private fun bitmapToBase64(bitmap: Bitmap): String {
