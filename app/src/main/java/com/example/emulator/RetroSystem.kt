@@ -60,6 +60,18 @@ enum class RetroSystem(
         hasAnalogStick = false,
         supportedExtensions = listOf("nds", "ds")
     ),
+    N3DS(
+        code = "N3DS",
+        displayName = "Nintendo 3DS",
+        releaseYear = 2011,
+        screenWidth = 400,
+        screenHeight = 240,
+        colorDepth = "24-bit Dual Screen + Touch",
+        defaultAspect = 400f / 240f,
+        isDualScreen = true,
+        hasAnalogStick = true,
+        supportedExtensions = listOf("3ds", "cci", "cxi")
+    ),
     N64(
         code = "N64",
         displayName = "Nintendo 64",
