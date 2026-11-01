@@ -200,3 +200,11 @@ tasks.register<Copy>("stageAzaharCore") {
         }
     }
 }
+
+ // When a verified Azahar artifact is present, ensure it is staged before
+ // Android's native library and asset merge tasks begin.
+if (azaharCoreInput.isFile) {
+    tasks.named("preBuild").configure {
+        dependsOn("stageAzaharCore")
+    }
+}
