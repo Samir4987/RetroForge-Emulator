@@ -72,7 +72,7 @@ class EmulatorCore(
     init {
         // Pre-populate touch targets
         repeat(6) {
-            touchTargets.add(floatArrayOf(40f + it * 32f, 50f + (it % 3) * 30f, 12f, 1f))
+            touchTargets.add(floatArrayOf(40f + (it % 3) * 40f, 36f + (it / 3) * 60f, 12f, 1f))
         }
     }
 
@@ -128,8 +128,8 @@ class EmulatorCore(
         playTimeSeconds = 0L
         touchWasActive = false
         touchTargets.forEachIndexed { index, target ->
-            target[0] = 40f + index * 32f
-            target[1] = 50f + (index % 3) * 30f
+            target[0] = 40f + (index % 3) * 40f
+            target[1] = 36f + (index / 3) * 60f
             target[3] = 1f
         }
     }
@@ -159,8 +159,8 @@ class EmulatorCore(
                 lasers.clear()
                 touchWasActive = false
                 touchTargets.forEachIndexed { index, target ->
-                    target[0] = 40f + index * 32f
-                    target[1] = 50f + (index % 3) * 30f
+                    target[0] = 40f + (index % 3) * 40f
+                    target[1] = 36f + (index / 3) * 60f
                     target[3] = 1f
                 }
             }
@@ -291,37 +291,41 @@ class EmulatorCore(
     }
 
     private fun updateNdsSimulation() {
-        // Top screen: Boss threats; Bottom screen: Stylus touches
-        val touchPx = inputState.touchX * currentSystem.screenWidth
-        val touchPy = inputState.touchY * currentSystem.screenHeight
+        // Touch coordinates are normalized by the UI; convert to the target model's 160x144 space.
+        val touchPx = inputState.touchX * 160f
+        val touchPy = inputState.touchY * 144f
+        val justTouched = inputState.isTouching && !touchWasActive
+
         if (inputState.isTouching) {
             shieldCharge = (shieldCharge - 1).coerceAtLeast(0)
-
-            touchTargets.forEach { target ->
-                val dist = kotlin.math.hypot(touchPx - target[0], touchPy - target[1])
-                if (dist < target[2] * 2 && target[3] > 0.5f) {
-                    target[3] = 0f // Pop target
-                    score += 50
-                    audioSynthesizer.playLaser()
-                    if (campaign.view.bossActive) campaign.damageBoss() else campaign.recordObjective()
-                }
-            }
         } else {
             shieldCharge = (shieldCharge + 1).coerceAtMost(100)
         }
 
-        // Respawn touch targets occasionally
+        // Count one deliberate tap, not every frame that a finger remains on the screen.
+        if (justTouched && campaign.view.bossActive) {
+            val dx = touchPx - 80f
+            val dy = touchPy - 72f
+            if (kotlin.math.hypot(dx, dy) < 18f) campaign.damageBoss()
+        } else if (justTouched && !campaign.view.completed) {
+            val target = touchTargets.firstOrNull {
+                it[3] > 0.5f && kotlin.math.hypot(touchPx - it[0], touchPy - it[1]) < it[2] * 1.5f
+            }
+            if (target != null) {
+                target[3] = 0f
+                score += 50
+                audioSynthesizer.playLaser()
+                campaign.recordObjective()
+            }
+        }
+
+        // Respawn targets inside the visible touch area while objectives remain.
         if (gameTick % 90 == 0 && !campaign.view.bossActive && !campaign.view.completed) {
             touchTargets.forEach {
                 it[3] = 1f
-                it[0] = 30f + (Math.random() * 190f).toFloat()
-                it[1] = 40f + (Math.random() * 110f).toFloat()
+                it[0] = 24f + (Math.random() * 112f).toFloat()
+                it[1] = 24f + (Math.random() * 96f).toFloat()
             }
-        }
-        if (inputState.isTouching && !touchWasActive && campaign.view.bossActive) {
-            val dx = touchPx - 128f
-            val dy = touchPy - 96f
-            if (kotlin.math.hypot(dx, dy) < 28f) campaign.damageBoss()
         }
         touchWasActive = inputState.isTouching
     }
@@ -339,24 +343,33 @@ class EmulatorCore(
 
         if (inputState.buttonA || inputState.triggerZ) {
             // Fire 3D Laser
-            lasers.add(floatArrayOf(0f, -2f, 10f, sin(yaw) * 4f, -sin(pitch) * 4f, cos(yaw) * 15f))
+            lasers.add(floatArrayOf(0f, -2f, 10f, sin(yaw) * 100f, -sin(pitch) * 100f, cos(yaw).coerceAtLeast(0.25f) * 15f))
             audioSynthesizer.playLaser()
             inputState.buttonA = false
             inputState.triggerZ = false
         }
 
-        // Update active lasers
+        // Resolve shots against the moving polygon target at its depth.
         val iter = lasers.iterator()
         while (iter.hasNext()) {
             val laser = iter.next()
             laser[0] += laser[3]
             laser[1] += laser[4]
             laser[2] += laser[5]
-            if (laser[2] > 250f) {
-                iter.remove()
-                score += 20
-                if (campaign.view.bossActive) campaign.damageBoss() else campaign.recordObjective()
+
+            if (laser[2] >= 50f) {
+                val shotX = 160f + (laser[0] / (laser[2] * 0.1f)).coerceIn(-150f, 150f)
+                val shotY = 120f + (laser[1] / (laser[2] * 0.1f)).coerceIn(-100f, 100f)
+                val targetX = 160f + (cos(gameTick * 0.03) * 60f).toFloat()
+                val targetY = 120f + (sin(gameTick * 0.02) * 40f).toFloat()
+                if (kotlin.math.hypot(shotX - targetX, shotY - targetY) < 24f) {
+                    iter.remove()
+                    score += 20
+                    if (campaign.view.bossActive) campaign.damageBoss() else campaign.recordObjective()
+                    continue
+                }
             }
+            if (laser[2] > 250f) iter.remove()
         }
     }
 
