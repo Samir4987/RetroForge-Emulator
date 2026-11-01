@@ -111,7 +111,14 @@ fun LibraryScreen(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
-            uris.forEach { persistRomReadPermission(context, it) }
+            val failedPermissionCount = uris.count { !persistRomReadPermission(context, it) }
+            if (failedPermissionCount > 0) {
+                Toast.makeText(
+                    context,
+                    "$failedPermissionCount ROM file(s) may need to be re-imported after app restart.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
             isScanning = true
             coroutineScope.launch {
                 val scanned = romLibraryRepository.scanAndInsertMultipleUris(context, uris)
@@ -594,10 +601,9 @@ private fun persistRomReadPermission(context: Context, uri: Uri): Boolean {
 private fun readRomBytes(context: Context, uri: Uri): ByteArray? {
     if (uri.scheme == "builtin") return null
     return try {
-        val inputStream = context.contentResolver.openInputStream(uri)
-        val bytes = inputStream?.readBytes()
-        inputStream?.close()
-        bytes
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            input.readBytes()
+        }
     } catch (_: Exception) {
         null
     }
