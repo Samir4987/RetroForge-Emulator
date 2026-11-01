@@ -1,5 +1,7 @@
 #include <jni.h>
 #include <android/log.h>
+#include <EGL/egl.h>
+#include <GLES2/gl2.h>
 #include <dlfcn.h>
 #include <cstdint>
 #include <atomic>
@@ -22,6 +24,23 @@ using retro_audio_sample_t = void (*)(int16_t, int16_t);
 using retro_audio_sample_batch_t = size_t (*)(const int16_t*, size_t);
 using retro_input_poll_t = void (*)();
 using retro_input_state_t = int16_t (*)(unsigned, unsigned, unsigned, unsigned);
+using retro_hw_proc_address_t = void* (*)(const char*);
+using retro_hw_framebuffer_t = uintptr_t (*)();
+
+struct HwRenderCallback {
+    unsigned context_type;
+    void (*context_reset)();
+    retro_hw_framebuffer_t get_current_framebuffer;
+    retro_hw_proc_address_t get_proc_address;
+    bool depth;
+    bool stencil;
+    bool bottom_left_origin;
+    unsigned version_major;
+    unsigned version_minor;
+    bool cache_context;
+    void (*context_destroy)();
+    bool debug_context;
+};
 
 struct GameInfo { const char* path; const void* data; size_t size; const char* meta; };
 struct SystemInfo { const char* name; const char* version; const char* extensions; bool need_fullpath; bool block_extract; };
@@ -33,6 +52,12 @@ bool initialized = false;
 bool game_loaded = false;
 std::vector<uint8_t> rom_data;
 std::mutex video_mutex;
+std::mutex core_mutex;
+EGLDisplay egl_display = EGL_NO_DISPLAY;
+EGLContext egl_context = EGL_NO_CONTEXT;
+EGLSurface egl_surface = EGL_NO_SURFACE;
+HwRenderCallback hw_callback{};
+bool hardware_rendering = false;
 std::vector<uint32_t> video_pixels;
 unsigned video_width = 0;
 unsigned video_height = 0;
@@ -90,7 +115,126 @@ RunFrame run_frame = nullptr;
 UnloadGame unload_game = nullptr;
 GetAvInfo get_av_info = nullptr;
 
+uintptr_t current_framebuffer() { return 0; }
+
+void* resolve_gl_proc(const char* name) {
+    if (!name) return nullptr;
+    void* proc = reinterpret_cast<void*>(eglGetProcAddress(name));
+    if (proc) return proc;
+    static void* gles = dlopen("libGLESv3.so", RTLD_NOW | RTLD_LOCAL);
+    if (!gles) gles = dlopen("libGLESv2.so", RTLD_NOW | RTLD_LOCAL);
+    return gles ? dlsym(gles, name) : nullptr;
+}
+
+bool make_egl_current() {
+    return egl_display != EGL_NO_DISPLAY && egl_context != EGL_NO_CONTEXT &&
+           egl_surface != EGL_NO_SURFACE &&
+           eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context) == EGL_TRUE;
+}
+
+void release_egl_current() {
+    if (egl_display != EGL_NO_DISPLAY) {
+        eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    }
+}
+
+void destroy_egl_context() {
+    if (egl_display == EGL_NO_DISPLAY) return;
+    if (egl_context != EGL_NO_CONTEXT) make_egl_current();
+    if (hardware_rendering && hw_callback.context_destroy) hw_callback.context_destroy();
+    release_egl_current();
+    if (egl_surface != EGL_NO_SURFACE) eglDestroySurface(egl_display, egl_surface);
+    if (egl_context != EGL_NO_CONTEXT) eglDestroyContext(egl_display, egl_context);
+    eglTerminate(egl_display);
+    egl_display = EGL_NO_DISPLAY;
+    egl_context = EGL_NO_CONTEXT;
+    egl_surface = EGL_NO_SURFACE;
+    hardware_rendering = false;
+    hw_callback = {};
+}
+
+bool create_egl_context(unsigned context_type) {
+    if (context_type != 2 && context_type != 4) return false; // GLES2 / GLES3 only.
+    if (egl_context != EGL_NO_CONTEXT) return false;
+    egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (egl_display == EGL_NO_DISPLAY || !eglInitialize(egl_display, nullptr, nullptr)) {
+        egl_display = EGL_NO_DISPLAY;
+        return false;
+    }
+    const EGLint renderable = context_type == 4 ? 0x0040 : EGL_OPENGL_ES2_BIT;
+    const EGLint config_attributes[] = {
+        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE, renderable,
+        EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_NONE
+    };
+    EGLConfig config = nullptr;
+    EGLint count = 0;
+    if (!eglChooseConfig(egl_display, config_attributes, &config, 1, &count) || count < 1) {
+        eglTerminate(egl_display);
+        egl_display = EGL_NO_DISPLAY;
+        return false;
+    }
+    const EGLint surface_attributes[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
+    egl_surface = eglCreatePbufferSurface(egl_display, config, surface_attributes);
+    const EGLint context_attributes[] = {
+        EGL_CONTEXT_CLIENT_VERSION, context_type == 4 ? 3 : 2, EGL_NONE
+    };
+    if (egl_surface != EGL_NO_SURFACE) {
+        egl_context = eglCreateContext(egl_display, config, EGL_NO_CONTEXT, context_attributes);
+    }
+    if (egl_surface == EGL_NO_SURFACE || egl_context == EGL_NO_CONTEXT || !make_egl_current()) {
+        if (egl_surface != EGL_NO_SURFACE) eglDestroySurface(egl_display, egl_surface);
+        if (egl_context != EGL_NO_CONTEXT) eglDestroyContext(egl_display, egl_context);
+        eglTerminate(egl_display);
+        egl_display = EGL_NO_DISPLAY;
+        egl_surface = EGL_NO_SURFACE;
+        egl_context = EGL_NO_CONTEXT;
+        return false;
+    }
+    return true;
+}
+
+bool capture_hardware_frame(unsigned width, unsigned height) {
+    if (!make_egl_current() || width == 0 || height == 0 ||
+        width > kMaxVideoDimension || height > kMaxVideoDimension) return false;
+    try {
+        std::vector<uint8_t> rgba(static_cast<size_t>(width) * height * 4u);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels(0, 0, static_cast<GLsizei>(width), static_cast<GLsizei>(height),
+                     GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+        if (glGetError() != GL_NO_ERROR) return false;
+        std::vector<uint32_t> converted(static_cast<size_t>(width) * height);
+        for (unsigned y = 0; y < height; ++y) {
+            const unsigned source_y = hw_callback.bottom_left_origin ? y : height - 1u - y;
+            for (unsigned x = 0; x < width; ++x) {
+                const size_t src = (static_cast<size_t>(source_y) * width + x) * 4u;
+                converted[static_cast<size_t>(y) * width + x] =
+                    0xff000000u | (static_cast<uint32_t>(rgba[src]) << 16u) |
+                    (static_cast<uint32_t>(rgba[src + 1u]) << 8u) |
+                    static_cast<uint32_t>(rgba[src + 2u]);
+            }
+        }
+        std::lock_guard<std::mutex> lock(video_mutex);
+        video_pixels.swap(converted);
+        video_width = width;
+        video_height = height;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 bool environment(unsigned command, void* data) {
+    // RETRO_ENVIRONMENT_SET_HW_RENDER = 14.
+    if (command == 14 && data) {
+        auto* requested = static_cast<HwRenderCallback*>(data);
+        if (!create_egl_context(requested->context_type)) return false;
+        hw_callback = *requested;
+        requested->get_current_framebuffer = current_framebuffer;
+        requested->get_proc_address = resolve_gl_proc;
+        hardware_rendering = true;
+        if (requested->context_reset) requested->context_reset();
+        return true;
+    }
     // RETRO_ENVIRONMENT_SET_PIXEL_FORMAT = 10.
     if (command == 10 && data) {
         const auto requested = *static_cast<PixelFormat*>(data);
@@ -108,6 +252,10 @@ bool environment(unsigned command, void* data) {
 // Libretro permits null data to mean "reuse the previous frame"; in that case
 // the last valid frame is deliberately retained.
 void video_refresh(const void* data, unsigned width, unsigned height, size_t pitch) {
+    if (hardware_rendering && data == reinterpret_cast<const void*>(static_cast<intptr_t>(-1))) {
+        capture_hardware_frame(width, height);
+        return;
+    }
     if (!data || width == 0 || height == 0 ||
         width > kMaxVideoDimension || height > kMaxVideoDimension ||
         static_cast<size_t>(width) > std::numeric_limits<size_t>::max() / 4) {
@@ -220,6 +368,7 @@ void reset_symbols() {
 }
 
 void close_core() {
+    if (hardware_rendering) destroy_egl_context();
     if (game_loaded && unload_game) unload_game();
     game_loaded = false;
     if (initialized && core_deinit) core_deinit();
@@ -252,6 +401,7 @@ void close_core() {
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstring core_path, jstring rom_path) {
+    std::lock_guard<std::mutex> core_lock(core_mutex);
     close_core();
     if (!core_path || !rom_path) return env->NewStringUTF("Core path and ROM path are required.");
 
@@ -347,13 +497,17 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_emulator_LibretroNative_nativeRunFrame(JNIEnv*, jobject) {
+    std::lock_guard<std::mutex> core_lock(core_mutex);
     if (!initialized || !game_loaded || !run_frame) return JNI_FALSE;
+    if (hardware_rendering && !make_egl_current()) return JNI_FALSE;
     run_frame();
+    if (hardware_rendering) release_egl_current();
     return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_emulator_LibretroNative_nativeClose(JNIEnv*, jobject) {
+    std::lock_guard<std::mutex> core_lock(core_mutex);
     close_core();
 }
 
