@@ -55,13 +55,13 @@ The default CI unit-test run excludes that emulator-dependent class unless the p
 - [x] Add ELF64/AArch64, required-symbol, revision, and checksum verification.
 - [x] Implement JNI transport for video, stereo audio, AV metadata, joypad, analog, and pointer input.
 - [x] Add vertically stacked dual-display conversion, stacked/side-by-side/top-only/touch-only layout options, and Compose screen wiring.
-- [x] Wire AudioTrack, runtime pause/resume, persistent ROM URI access, and local optional Libretro save-state files.
+- [x] Wire AudioTrack, runtime pause/resume, persistent ROM URI access, local optional Libretro save-state files, and user-owned Azahar data import.
 - [x] Add APK staging for the core and GPL/revision metadata.
 - [ ] Build and inspect the latest 3DS-enabled APK.
 - [ ] Boot lawful homebrew on a physical ARM64 Android device.
 - [ ] Verify display orientation, touch coordinates, analog input, audio, and save-state behavior.
 - [ ] Verify stability, performance, and required user-supplied system data.
-- [ ] Complete GPL-3.0 distribution review.
+- [ ] Complete upstream/third-party license and corresponding-source distribution review.
 
 ## Current status
 

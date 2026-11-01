@@ -156,13 +156,13 @@ fun EmulatorScreen(
                             )
                         }
                         result.onSuccess { summary ->
-                        val megabytes = summary.bytesCopied / (1024L * 1024L)
-                        Toast.makeText(
-                            context,
-                            "Imported ${summary.filesCopied} files (${megabytes} MiB). Reopen the 3DS game to apply.",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }.onFailure { failure ->
+                            val megabytes = summary.bytesCopied / (1024L * 1024L)
+                            Toast.makeText(
+                                context,
+                                "Imported ${summary.filesCopied} files (${megabytes} MiB). Reopen the 3DS game to apply.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }.onFailure { failure ->
                             Toast.makeText(
                                 context,
                                 failure.message ?: "Could not import 3DS system data.",

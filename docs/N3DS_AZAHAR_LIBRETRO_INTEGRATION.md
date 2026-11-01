@@ -28,6 +28,7 @@ The pin and build approach follow the upstream Libretro Android CI configuration
 
 - The Kotlin runtime loads `azahar_libretro.so` through the JNI Libretro frontend.
 - JNI supplies system, save, and content directories to the core and reads ROMs from a private cached file.
+- The emulator screen provides a Storage Access Framework folder import for user-owned Azahar data. It validates the selected `Azahar/` tree and copies `sysdata/`, `nand/`, and `sdmc/` into the core's app-private save directory.
 - The frontend negotiates GLES3 and captures the hardware frame through an EGL pbuffer readback path.
 - Video metadata, pitch, pixel format, AV timing, and stereo PCM16 audio are transported to Kotlin.
 - The Compose emulator screen now starts the Azahar runtime for N3DS ROMs rather than using the demo renderer.
@@ -44,7 +45,7 @@ Implementation does not mean the system is fully supported yet.
 
 1. **Physical-device gameplay is not verified.** Install the 3DS-enabled APK and test lawful homebrew on a real ARM64 Android device.
 2. **The GLES3/EGL path uses CPU readback.** It is a compatibility-oriented first frontend, not a zero-copy Android display surface. Measure frame pacing, heat, and memory use on devices.
-3. **System data/firmware is not bundled.** Users must supply any required system data or keys lawfully. The runtime provides app-private system/save directories, but a user-facing setup and diagnostics flow remains to be validated.
+3. **System data and firmware are not bundled.** Azahar requires decrypted ROMs; some games also need Mii data. The in-app folder importer accepts user-owned Azahar data (including `sysdata/`, `nand/`, and `sdmc/`) and places it under `files/retroforge/3ds/saves/Azahar/`. Do not distribute proprietary firmware, keys, NAND dumps, or game content.
 4. **Save-state support is conditional and local-only.** It is exposed only when the core provides `retro_serialize_size`, `retro_serialize`, and `retro_unserialize`. Large snapshots are stored under app-private files and are not cloud-synced; round-trip testing against the pinned core is pending.
 5. **Physical gamepad mapping is not complete.** The on-screen controller and touch input are forwarded; Android hardware-controller key/axis mapping still needs implementation and device testing.
 6. **Packaging must be rerun against the latest verified Azahar artifact.** The manual workflow must produce an APK containing the core, `libc++_shared.so`, and the bundled license/revision assets.
@@ -88,13 +89,14 @@ The manual GitHub Actions workflow **Package Nintendo 3DS core into Android APK*
 - [x] Add the N3DS system/core registration and extension tests.
 - [x] Implement JNI video, audio, input, AV-info, system/save/content directory, and optional save-state interfaces.
 - [x] Add Kotlin runtime, AudioTrack output, dual-display conversion, touch and virtual-controller forwarding.
-- [x] Connect N3DS ROM selection and runtime lifecycle to the emulator screen.
-- [x] Add APK staging for the core, matching C++ runtime, GPL license, and revision metadata.
+- [x] Connect N3DS ROM selection, persistent Storage Access Framework permissions, and runtime lifecycle to the emulator screen.
+- [x] Add an app-private importer for user-provided Azahar system/Mii data.
+- [x] Add APK staging for the core, matching C++ runtime, license/revision metadata, and third-party license notices.
 - [ ] Produce a successful APK from the latest artifact and inspect all packaged native libraries and license assets.
 - [ ] Install on a physical ARM64 Android device and boot lawful homebrew.
 - [ ] Verify both displays, touch, Circle Pad, buttons, audio, pause/resume, and repeated open/close.
 - [ ] Verify save-state save/restore round trips with the pinned Azahar core.
 - [ ] Verify performance, memory use, and compatibility across target devices.
-- [ ] Complete GPL-3.0 distribution and corresponding-source review.
+- [ ] Complete upstream and third-party license review and corresponding-source distribution review.
 
 Do not mark Nintendo 3DS playable or fully supported until the unchecked acceptance gates have passed.
