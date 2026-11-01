@@ -152,6 +152,12 @@ jobs:
             app/build/generated/res/google-services \
             2>/dev/null || true
 
+      - name: Compile Android JNI frontend
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./gradlew --no-daemon :app:externalNativeBuildDebug
+
       - name: Run unit tests
         shell: bash
         run: |
