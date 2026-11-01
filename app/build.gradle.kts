@@ -147,6 +147,14 @@ tasks.withType<Test> {
     testLogging {
         events("passed", "failed", "skipped")
     }
+    // This test suite talks to the Firebase Auth/Firestore emulators on
+    // localhost. Keep normal CI hermetic; opt in after starting firebase.json's
+    // emulators with -PwithFirebaseEmulator=true.
+    if (providers.gradleProperty("withFirebaseEmulator").orNull != "true") {
+        filter {
+            excludeTestsMatching("com.example.data.SaveStateRepositoryRuleTest")
+        }
+    }
 }
 
 // Nintendo 3DS: stage the separately built Azahar core and its GPL notice.

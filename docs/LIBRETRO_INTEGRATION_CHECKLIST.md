@@ -40,6 +40,15 @@ For each system GB, GBC, GBA, NDS, N3DS, and N64:
 - [ ] Test at least one representative title/homebrew on a physical Android device.
 - [ ] Verify license notices and bundled native libraries for every packaged ABI.
 
+Run local Firestore integration tests with the Firebase emulators configured in `firebase.json`:
+
+```bash
+firebase emulators:start --only auth,firestore
+./gradlew :app:testDebugUnitTest -PwithFirebaseEmulator=true --tests com.example.data.SaveStateRepositoryRuleTest
+```
+
+The default CI unit-test run excludes that emulator-dependent class unless the property is enabled.
+
 ## Nintendo 3DS-specific checks
 
 - [x] Pin the Azahar Libretro core and add a separate ARM64 build workflow.
