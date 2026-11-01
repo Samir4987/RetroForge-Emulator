@@ -1,6 +1,21 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.emulator.LibretroAudioOutput
+import com.example.emulator.LibretroCoreSpec
+import com.example.emulator.LibretroRuntime
+import com.example.emulator.LibretroVideoConverter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+import kotlin.math.roundToInt
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -74,6 +89,22 @@ fun EmulatorScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
+    val isNintendo3ds = game.system.equals("N3DS", ignoreCase = true)
+    val n3dsRuntime = remember(game.id, isNintendo3ds) {
+        if (isNintendo3ds) {
+            val frontend = File(context.applicationInfo.nativeLibraryDir, "libretroforge_libretro.so")
+            LibretroRuntime(frontend, checkNotNull(LibretroCoreSpec.forSystem(com.example.emulator.RetroSystem.N3DS)))
+        } else {
+            null
+        }
+    }
+    var n3dsTopBitmap by remember(game.id) { mutableStateOf<Bitmap?>(null) }
+    var n3dsBottomBitmap by remember(game.id) { mutableStateOf<Bitmap?>(null) }
+    var n3dsError by remember(game.id) { mutableStateOf<String?>(null) }
+    var n3dsFrameIntervalMs by remember(game.id) { mutableLongStateOf(16L) }
+    var n3dsAudioOutput by remember(game.id) { mutableStateOf<LibretroAudioOutput?>(null) }
+    var n3dsLifecyclePaused by remember(game.id) { mutableStateOf(false) }
+
     var activeSkin by remember { mutableStateOf(initialSkin) }
     var enableScanlines by remember { mutableStateOf(true) }
     var showSlotDialog by remember { mutableStateOf(false) }
@@ -92,9 +123,55 @@ fun EmulatorScreen(
         onBackToLibrary()
     }
 
-    // Load game into core on launch
-    LaunchedEffect(game) {
+    // Load the game and start the real Azahar core for Nintendo 3DS ROMs.
+    LaunchedEffect(game, n3dsRuntime) {
         emulatorCore.loadGame(game)
+        n3dsError = null
+        n3dsTopBitmap = null
+        n3dsBottomBitmap = null
+        n3dsAudioOutput?.close()
+        n3dsAudioOutput = null
+
+        if (n3dsRuntime != null) {
+            try {
+                val romFile = withContext(Dispatchers.IO) {
+                    val extension = game.romFileName?.substringAfterLast('.', "")?.lowercase()
+                        ?: throw IllegalArgumentException("Nintendo 3DS ROM filename is missing.")
+                    require(extension in setOf("3ds", "cci", "cxi")) {
+                        "Unsupported Nintendo 3DS ROM extension: .$extension"
+                    }
+                    val safeId = game.id.replace(Regex("[^A-Za-z0-9_-]"), "_")
+                    val cachedRom = File(context.cacheDir, "retroforge-$safeId.$extension")
+                    if (game.romBytes != null) {
+                        cachedRom.writeBytes(game.romBytes)
+                    } else {
+                        val uri = game.romUri
+                            ?: throw IllegalStateException("No accessible ROM URI was provided for this Nintendo 3DS game.")
+                        context.contentResolver.openInputStream(Uri.parse(uri)).use { input ->
+                            requireNotNull(input) { "Android could not open the selected ROM." }
+                            cachedRom.outputStream().use { output -> input.copyTo(output) }
+                        }
+                    }
+                    require(cachedRom.isFile && cachedRom.length() > 0L) { "The copied ROM is empty." }
+                    cachedRom
+                }
+                withContext(Dispatchers.IO) {
+                    n3dsRuntime.loadRom(romFile).getOrThrow()
+                }
+                val avInfo = withContext(Dispatchers.IO) {
+                    n3dsRuntime.getAvInfo().getOrThrow()
+                }
+                n3dsFrameIntervalMs = (1000.0 / avInfo.framesPerSecond)
+                    .roundToInt().coerceIn(1, 100).toLong()
+                n3dsAudioOutput = withContext(Dispatchers.IO) {
+                    LibretroAudioOutput(avInfo.sampleRate.roundToInt())
+                }
+            } catch (failure: Exception) {
+                n3dsError = failure.message ?: "Nintendo 3DS core could not start."
+                n3dsRuntime.close()
+            }
+        }
+
         // Load cloud saves if logged in
         if (Firebase.auth.currentUser != null && saveStateRepository != null) {
             try {
@@ -107,15 +184,66 @@ fun EmulatorScreen(
         }
     }
 
-    // High performance frame loop
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, n3dsRuntime) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    n3dsLifecyclePaused = true
+                    n3dsAudioOutput?.pause()
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    n3dsLifecyclePaused = false
+                    if (!emulatorCore.isPaused) n3dsAudioOutput?.resume()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            n3dsAudioOutput?.close()
+            n3dsAudioOutput = null
+            n3dsRuntime?.close()
+        }
+    }
+
+    // Native core and the demo cores share one paced frame loop. Native work
+    // runs off the UI thread; Compose only receives completed display bitmaps.
     var frameTicker by remember { mutableStateOf(0L) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(game, n3dsRuntime) {
         while (true) {
-            emulatorCore.tick()
-            frameTicker = emulatorCore.frameCounter
-            // 60 FPS standard timing adjusted for fast forward
-            val frameDelay = (16L / emulatorCore.fastForwardMultiplier.toLong().coerceAtLeast(1L)).coerceAtLeast(4L)
-            delay(frameDelay)
+            if (n3dsRuntime != null) {
+                if (n3dsRuntime.state == LibretroRuntime.State.GAME_LOADED &&
+                    !emulatorCore.isPaused && !n3dsLifecyclePaused) {
+                    try {
+                        val output = withContext(Dispatchers.Default) {
+                            sendNintendo3dsInput(n3dsRuntime, emulatorCore.inputState)
+                            n3dsRuntime.runFrame().getOrThrow()
+                            val frame = n3dsRuntime.copyVideoFrame().getOrThrow()
+                            val displays = frame?.let(LibretroVideoConverter::splitDualScreenFrame)
+                            val audio = n3dsRuntime.drainAudioSamples().getOrThrow()
+                            displays to audio
+                        }
+                        output.first?.let { (top, bottom) ->
+                            n3dsTopBitmap = top
+                            n3dsBottomBitmap = bottom
+                        }
+                        n3dsAudioOutput?.write(output.second)
+                        frameTicker++
+                    } catch (failure: Exception) {
+                        n3dsError = failure.message ?: "Nintendo 3DS emulation stopped unexpectedly."
+                        emulatorCore.isPaused = true
+                        n3dsAudioOutput?.pause()
+                    }
+                }
+                delay(n3dsFrameIntervalMs)
+            } else {
+                emulatorCore.tick()
+                frameTicker = emulatorCore.frameCounter
+                val frameDelay = (16L / emulatorCore.fastForwardMultiplier.toLong().coerceAtLeast(1L)).coerceAtLeast(4L)
+                delay(frameDelay)
+            }
         }
     }
 
@@ -311,8 +439,8 @@ fun EmulatorScreen(
             // Game Display View
             RetroScreenView(
                 system = emulatorCore.currentSystem,
-                screenBitmap = emulatorCore.screenBitmap,
-                bottomScreenBitmap = emulatorCore.bottomScreenBitmap,
+                screenBitmap = n3dsTopBitmap ?: emulatorCore.screenBitmap,
+                bottomScreenBitmap = n3dsBottomBitmap ?: emulatorCore.bottomScreenBitmap,
                 isRewinding = emulatorCore.isRewinding,
                 fastForwardMultiplier = emulatorCore.fastForwardMultiplier,
                 isPaused = emulatorCore.isPaused,
@@ -321,11 +449,27 @@ fun EmulatorScreen(
                     emulatorCore.inputState.touchX = nx
                     emulatorCore.inputState.touchY = ny
                     emulatorCore.inputState.isTouching = touching
+                    if (n3dsRuntime?.state == LibretroRuntime.State.GAME_LOADED) {
+                        n3dsRuntime.setPointer(
+                            x = (nx * 65_535f - 32_768f).roundToInt(),
+                            y = (ny * 65_535f - 32_768f).roundToInt(),
+                            pressed = touching
+                        )
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             )
+
+            if (n3dsError != null) {
+                Text(
+                    text = "3DS core: $n3dsError",
+                    color = Color(0xFFFF8A80),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
 
             // On-Screen Virtual Controller
             VirtualController(
@@ -386,6 +530,32 @@ fun EmulatorScreen(
             )
         }
     }
+}
+
+private fun sendNintendo3dsInput(
+    runtime: LibretroRuntime,
+    input: com.example.emulator.EmulatorInputState
+) {
+    // RETRO_DEVICE_ID_JOYPAD values from the Libretro ABI.
+    val buttons = arrayOf(
+        0 to input.buttonB,
+        1 to input.buttonY,
+        2 to input.select,
+        3 to input.start,
+        4 to input.dpadUp,
+        5 to input.dpadDown,
+        6 to input.dpadLeft,
+        7 to input.dpadRight,
+        8 to input.buttonA,
+        9 to input.buttonX,
+        10 to input.triggerL,
+        11 to input.triggerR
+    )
+    buttons.forEach { (button, pressed) ->
+        runtime.setJoypadButton(button = button, pressed = pressed)
+    }
+    runtime.setAnalogAxis(stick = 0, axis = 0, value = (input.stickX * 32_767f).roundToInt())
+    runtime.setAnalogAxis(stick = 0, axis = 1, value = (-input.stickY * 32_767f).roundToInt())
 }
 
 private fun saveStateToSlot(
