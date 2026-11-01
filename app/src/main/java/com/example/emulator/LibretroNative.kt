@@ -9,6 +9,7 @@ import java.nio.ByteBuffer
 internal class LibretroNative {
     external fun nativeOpen(corePath: String, romPath: String): String?
     external fun nativeRunFrame(): Boolean
+    external fun nativeGetAvInfo(): DoubleArray
     external fun nativeGetVideoInfo(): IntArray
     external fun nativeCopyVideoFrame(destination: ByteBuffer): Int
     external fun nativeCopyAudioSamples(destination: ShortArray): Int
