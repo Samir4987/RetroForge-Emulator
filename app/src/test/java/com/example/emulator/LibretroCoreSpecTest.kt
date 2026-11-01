@@ -13,7 +13,7 @@ class LibretroCoreSpecTest {
         assertNotNull(spec)
         assertEquals("azahar_libretro.so", spec!!.libraryFileName)
         assertEquals("https://github.com/azahar-emu/azahar", spec.upstreamUrl)
-        assertEquals(setOf("3ds", "cci", "cxi"), spec.extensions)
+        assertEquals(setOf("3ds", "3dsx", "z3dsx", "elf", "axf", "cci", "zcci", "cxi", "zcxi", "app"), spec.extensions)
     }
 
     @Test
