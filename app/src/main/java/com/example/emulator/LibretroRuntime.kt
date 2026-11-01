@@ -1,12 +1,23 @@
 package com.example.emulator
 
 import java.io.File
+import java.nio.ByteBuffer
+
+data class LibretroVideoFrame(
+    val width: Int,
+    val height: Int,
+    val pitch: Int,
+    /** Libretro pixel format: 0 = 0RGB1555, 1 = XRGB8888, 2 = RGB565. */
+    val pixelFormat: Int,
+    /** Direct buffer containing pitch * height bytes in the core's native pixel format. */
+    val pixels: ByteBuffer
+)
 
 /**
  * Boundary between the Android UI and the Libretro JNI frontend.
  *
- * A successful ROM load means the native core accepted the ROM; it does not
- * by itself mean video, audio, input, saves, or UI presentation are complete.
+ * This runtime transports actual core video/audio/input data. The caller still
+ * owns pixel conversion/rendering and feeding drained PCM into Android AudioTrack.
  */
 class LibretroRuntime(
     private val frontendLibrary: File,
@@ -25,9 +36,7 @@ class LibretroRuntime(
         get() = state == State.READY || state == State.GAME_LOADED
 
     init {
-        if (frontendLibrary.isFile && coreFile.isFile) {
-            state = State.READY
-        }
+        if (frontendLibrary.isFile && coreFile.isFile) state = State.READY
     }
 
     fun loadRom(rom: File): Result<Unit> {
@@ -57,24 +66,71 @@ class LibretroRuntime(
                 if (error != null) throw IllegalStateException(error)
                 state = State.GAME_LOADED
             } catch (failure: Throwable) {
-                // nativeOpen closes any previously loaded core before attempting a new load.
-                // Keep Kotlin state in sync if the replacement ROM fails to load.
                 runCatching { bridge.nativeClose() }
                 native = null
-                state = if (frontendLibrary.isFile && coreFile.isFile) {
-                    State.READY
-                } else {
-                    State.UNAVAILABLE
-                }
+                state = if (frontendLibrary.isFile && coreFile.isFile) State.READY else State.UNAVAILABLE
                 throw failure
             }
         }
     }
 
-    /** Advances one core frame. Rendering/audio/input callbacks are not yet implemented. */
+    /** Advances one emulated frame. Call from the emulator worker, not the UI thread. */
     fun runFrame(): Result<Unit> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before running frames." }
         check(native?.nativeRunFrame() == true) { "Native Libretro core is not running." }
+    }
+
+    /**
+     * Returns the latest core frame, or null before the core has produced one.
+     * The buffer is a snapshot and remains valid after the next emulated frame.
+     */
+    fun copyVideoFrame(): Result<LibretroVideoFrame?> = runCatching {
+        check(state == State.GAME_LOADED) { "Load a ROM before reading video." }
+        val bridge = checkNotNull(native)
+        val info = bridge.nativeGetVideoInfo()
+        require(info.size >= 4) { "Native frontend returned invalid video metadata." }
+        val width = info[0]
+        val height = info[1]
+        val pitch = info[2]
+        val pixelFormat = info[3]
+        if (width <= 0 || height <= 0 || pitch <= 0) return@runCatching null
+        val byteCount = Math.multiplyExact(pitch, height)
+        val pixels = ByteBuffer.allocateDirect(byteCount)
+        val copied = bridge.nativeCopyVideoFrame(pixels)
+        if (copied <= 0) return@runCatching null
+        require(copied <= byteCount) { "Native frontend copied more video data than the buffer can hold." }
+        pixels.position(0)
+        pixels.limit(copied)
+        LibretroVideoFrame(width, height, pitch, pixelFormat, pixels)
+    }
+
+    /** Drains up to maxSamples interleaved stereo PCM16 samples from the core. */
+    fun drainAudioSamples(maxSamples: Int = 4096): Result<ShortArray> = runCatching {
+        check(state == State.GAME_LOADED) { "Load a ROM before reading audio." }
+        require(maxSamples > 0) { "maxSamples must be positive." }
+        val destination = ShortArray(maxSamples)
+        val count = checkNotNull(native).nativeCopyAudioSamples(destination)
+        destination.copyOf(count.coerceIn(0, destination.size))
+    }
+
+    /** Libretro joypad button IDs follow RETRO_DEVICE_ID_JOYPAD. */
+    fun setJoypadButton(port: Int = 0, button: Int, pressed: Boolean) {
+        check(state == State.GAME_LOADED) { "Load a ROM before sending input." }
+        require(port in 0..1 && button in 0..15) { "Invalid Libretro joypad port or button." }
+        checkNotNull(native).nativeSetJoypadButton(port, button, pressed)
+    }
+
+    /** Analog axis values are signed 16-bit values; stick 0 is left, 1 is right. */
+    fun setAnalogAxis(port: Int = 0, stick: Int, axis: Int, value: Int) {
+        check(state == State.GAME_LOADED) { "Load a ROM before sending input." }
+        require(port in 0..1 && stick in 0..1 && axis in 0..1) { "Invalid Libretro analog axis." }
+        checkNotNull(native).nativeSetAnalogAxis(port, stick, axis, value.coerceIn(-32768, 32767))
+    }
+
+    /** Pointer coordinates use Libretro's signed -32768..32767 coordinate range. */
+    fun setPointer(x: Int, y: Int, pressed: Boolean) {
+        check(state == State.GAME_LOADED) { "Load a ROM before sending touch input." }
+        checkNotNull(native).nativeSetPointer(x.coerceIn(-32768, 32767), y.coerceIn(-32768, 32767), pressed)
     }
 
     fun close() {
