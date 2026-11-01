@@ -5,6 +5,7 @@
 #include <cstring>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <unordered_map>
 #include <fstream>
 #include <limits>
@@ -40,6 +41,7 @@ unsigned joypad_mask = 0;
 float pointer_x = 0.5f, pointer_y = 0.5f;
 bool pointer_pressed = false;
 std::vector<int16_t> pending_audio;
+double current_sample_rate = 32768.0;
 std::string system_directory;
 std::string save_directory;
 std::string assets_directory;
@@ -90,22 +92,17 @@ JNIEnv* callback_env(bool& attached) {
 void detach_callback(bool attached) { if (attached && java_vm) java_vm->DetachCurrentThread(); }
 
 bool environment(unsigned command, void* data) {
-    // Strip Libretro experimental flag so flagged commands match their base IDs.
     command &= ~0x10000u;
-    // RETRO_ENVIRONMENT_GET_CAN_DUPE
     if (command == 3 && data) { *static_cast<bool*>(data) = true; return true; }
-    // RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY
     if (command == 9 && data && !system_directory.empty()) {
         *static_cast<const char**>(data) = system_directory.c_str(); return true;
     }
-    // RETRO_ENVIRONMENT_GET_VARIABLE
     if (command == 15 && data) {
         auto* variable = static_cast<CoreVariable*>(data);
         auto it = variable->key ? core_options.find(variable->key) : core_options.end();
         if (it == core_options.end()) { variable->value = nullptr; return false; }
         variable->value = it->second.c_str(); return true;
     }
-    // RETRO_ENVIRONMENT_SET_VARIABLES
     if (command == 16 && data) {
         auto* variables = static_cast<CoreVariable*>(data);
         for (auto* item = variables; item && item->key; ++item) {
@@ -115,28 +112,22 @@ bool environment(unsigned command, void* data) {
             std::string choices = raw.substr(separator + 1);
             const auto first = choices.find('|');
             std::string value = choices.substr(0, first);
-            const auto begin = value.find_first_not_of(" \\t");
-            const auto end = value.find_last_not_of(" \\t");
+            const auto begin = value.find_first_not_of(" \t");
+            const auto end = value.find_last_not_of(" \t");
             value = begin == std::string::npos ? "" : value.substr(begin, end - begin + 1);
             core_options[item->key] = value;
         }
         return true;
     }
-    // RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE
     if (command == 17 && data) { *static_cast<bool*>(data) = false; return true; }
-    // RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME
     if (command == 18) return true;
-    // RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY
     if (command == 30 && data && !assets_directory.empty()) {
         *static_cast<const char**>(data) = assets_directory.c_str(); return true;
     }
-    // RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY
     if (command == 31 && data && !save_directory.empty()) {
         *static_cast<const char**>(data) = save_directory.c_str(); return true;
     }
-    // RETRO_ENVIRONMENT_GET_INPUT_BITMASKS
     if (command == 51 && data) { *static_cast<bool*>(data) = true; return true; }
-    // RETRO_ENVIRONMENT_SET_PIXEL_FORMAT
     if (command == 10 && data) {
         unsigned format = static_cast<PixelFormat*>(data)->format;
         if (format > 2) return false;
@@ -203,11 +194,12 @@ void send_audio(const int16_t* samples,size_t count) {
     detach_callback(attached);
 }
 void audio_sample(int16_t l,int16_t r) { pending_audio.push_back(l); pending_audio.push_back(r); }
-size_t audio_sample_batch(const int16_t* samples,size_t frames) { if(samples&&frames) send_audio(samples,frames*2); return frames; }
+size_t audio_sample_batch(const int16_t* samples,size_t frames) {
+    if (samples && frames <= static_cast<size_t>(std::numeric_limits<jsize>::max()) / 2) send_audio(samples,frames*2);
+    return frames;
+}
 void input_poll() {}
 int16_t input_state(unsigned, unsigned device, unsigned, unsigned id) {
-    // RETRO_DEVICE_ID_JOYPAD_MASK is 256. We advertise GET_INPUT_BITMASKS,
-    // so cores may request the complete mask instead of polling each button.
     if(device==1&&id==256) return static_cast<int16_t>(joypad_mask);
     if(device==1&&id<16) return (joypad_mask&(1u<<id))?1:0;
     if(device==6) {
@@ -223,24 +215,12 @@ template <typename T> bool symbol(T& out, const char* name) {
     if (!out) LOGE("Missing Libretro symbol: %s", name);
     return out != nullptr;
 }
-
 void reset_symbols() {
-    set_environment = nullptr;
-    set_video = nullptr;
-    set_audio = nullptr;
-    set_audio_batch = nullptr;
-    set_input_poll = nullptr;
-    set_input_state = nullptr;
-    core_init = nullptr;
-    core_deinit = nullptr;
-    get_system_info = nullptr;
-    load_game = nullptr;
-    run_frame = nullptr;
-    unload_game = nullptr;
-    get_av_info = nullptr;
+    set_environment = nullptr; set_video = nullptr; set_audio = nullptr; set_audio_batch = nullptr;
+    set_input_poll = nullptr; set_input_state = nullptr; core_init = nullptr; core_deinit = nullptr;
+    get_system_info = nullptr; load_game = nullptr; run_frame = nullptr; unload_game = nullptr; get_av_info = nullptr;
     serialize_size = nullptr; serialize_state = nullptr; unserialize_state = nullptr;
 }
-
 void close_core(JNIEnv* env = nullptr) {
     if (game_loaded && unload_game) unload_game();
     game_loaded = false;
@@ -250,6 +230,7 @@ void close_core(JNIEnv* env = nullptr) {
     core = nullptr;
     rom_data.clear(); pending_audio.clear(); core_options.clear();
     current_pixel_format = 1; joypad_mask = 0; pointer_x = 0.5f; pointer_y = 0.5f; pointer_pressed = false;
+    current_sample_rate = 32768.0;
     if (env && java_bridge) env->DeleteWeakGlobalRef(java_bridge);
     java_bridge=nullptr; video_callback=nullptr; audio_callback=nullptr;
     reset_symbols();
@@ -294,19 +275,14 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject bridge,
         close_core(env);
         return env->NewStringUTF("Core path and ROM path are required.");
     }
-
     const char* native_core_path = env->GetStringUTFChars(core_path, nullptr);
-    if (!native_core_path) {
-        close_core(env);
-        return env->NewStringUTF("Could not read core path.");
-    }
+    if (!native_core_path) { close_core(env); return env->NewStringUTF("Could not read core path."); }
     const char* native_rom_path = env->GetStringUTFChars(rom_path, nullptr);
     if (!native_rom_path) {
         env->ReleaseStringUTFChars(core_path, native_core_path);
         close_core(env);
         return env->NewStringUTF("Could not read ROM path.");
     }
-
     core = dlopen(native_core_path, RTLD_NOW | RTLD_LOCAL);
     env->ReleaseStringUTFChars(core_path, native_core_path);
     if (!core) {
@@ -315,7 +291,6 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject bridge,
         close_core(env);
         return env->NewStringUTF(error ? error : "Could not load core library.");
     }
-
     bool ok =
         symbol(set_environment, "retro_set_environment") &&
         symbol(set_video, "retro_set_video_refresh") &&
@@ -335,58 +310,49 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject bridge,
         env->ReleaseStringUTFChars(rom_path, native_rom_path);
         return env->NewStringUTF("Core is missing required Libretro API symbols.");
     }
-
     serialize_size=reinterpret_cast<SerializeSize>(dlsym(core,"retro_serialize_size"));
     serialize_state=reinterpret_cast<Serialize>(dlsym(core,"retro_serialize"));
     unserialize_state=reinterpret_cast<Unserialize>(dlsym(core,"retro_unserialize"));
-    set_environment(environment);
-    set_video(video_refresh);
-    set_audio(audio_sample);
-    set_audio_batch(audio_sample_batch);
-    set_input_poll(input_poll);
-    set_input_state(input_state);
-    core_init();
-    initialized = true;
-
-    SystemInfo info{};
-    get_system_info(&info);
+    set_environment(environment); set_video(video_refresh); set_audio(audio_sample);
+    set_audio_batch(audio_sample_batch); set_input_poll(input_poll); set_input_state(input_state);
+    core_init(); initialized = true;
+    SystemInfo info{}; get_system_info(&info);
     GameInfo game{native_rom_path, nullptr, 0, nullptr};
-
     if (!info.need_fullpath) {
         std::ifstream input(native_rom_path, std::ios::binary | std::ios::ate);
         if (!input) {
-            env->ReleaseStringUTFChars(rom_path, native_rom_path);
-            close_core(env);
+            env->ReleaseStringUTFChars(rom_path, native_rom_path); close_core(env);
             return env->NewStringUTF("Could not open ROM file.");
         }
         const std::streamoff length = input.tellg();
         if (length <= 0 || static_cast<unsigned long long>(length) >
                 static_cast<unsigned long long>(std::numeric_limits<size_t>::max())) {
-            env->ReleaseStringUTFChars(rom_path, native_rom_path);
-            close_core(env);
+            env->ReleaseStringUTFChars(rom_path, native_rom_path); close_core(env);
             return env->NewStringUTF("ROM file is empty or too large.");
         }
-        rom_data.resize(static_cast<size_t>(length));
-        input.seekg(0, std::ios::beg);
+        rom_data.resize(static_cast<size_t>(length)); input.seekg(0, std::ios::beg);
         if (!input.read(reinterpret_cast<char*>(rom_data.data()), length)) {
-            env->ReleaseStringUTFChars(rom_path, native_rom_path);
-            close_core(env);
+            env->ReleaseStringUTFChars(rom_path, native_rom_path); close_core(env);
             return env->NewStringUTF("Could not read complete ROM file.");
         }
-        game.data = rom_data.data();
-        game.size = rom_data.size();
+        game.data = rom_data.data(); game.size = rom_data.size();
     }
-
     const bool loaded = load_game(&game);
     env->ReleaseStringUTFChars(rom_path, native_rom_path);
-    if (!loaded) {
-        close_core(env);
-        return env->NewStringUTF("Libretro core rejected the ROM.");
-    }
+    if (!loaded) { close_core(env); return env->NewStringUTF("Libretro core rejected the ROM."); }
     game_loaded = true;
-    AvInfo av_info{};
-    get_av_info(&av_info);
+    AvInfo av_info{}; get_av_info(&av_info);
+    if (std::isfinite(av_info.sample_rate) && av_info.sample_rate >= 8000.0 && av_info.sample_rate <= 192000.0) {
+        current_sample_rate = av_info.sample_rate;
+    } else {
+        LOGE("Core reported invalid sample rate %.2f; using %.0f Hz", av_info.sample_rate, current_sample_rate);
+    }
     return nullptr;
+}
+
+extern "C" JNIEXPORT jdouble JNICALL
+Java_com_example_emulator_LibretroNative_nativeGetSampleRate(JNIEnv*, jobject) {
+    return current_sample_rate;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -396,7 +362,6 @@ Java_com_example_emulator_LibretroNative_nativeRunFrame(JNIEnv*, jobject) {
     if(!pending_audio.empty()) { send_audio(pending_audio.data(),pending_audio.size()); pending_audio.clear(); }
     return JNI_TRUE;
 }
-
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_emulator_LibretroNative_nativeSetInputState(JNIEnv*, jobject, jint mask, jfloat x, jfloat y, jboolean touching) {
     joypad_mask=static_cast<unsigned>(mask);
