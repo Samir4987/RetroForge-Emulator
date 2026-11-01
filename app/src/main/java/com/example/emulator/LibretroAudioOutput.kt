@@ -15,6 +15,8 @@ import java.io.Closeable
 class LibretroAudioOutput(sampleRate: Int) : Closeable {
     private val track: AudioTrack
     private var closed = false
+    private var pendingSamples = ShortArray(0)
+    private val maxPendingSamples = 32_768
 
     init {
         require(sampleRate in 8_000..192_000) { "Unsupported core audio sample rate: $sampleRate" }
@@ -53,8 +55,27 @@ class LibretroAudioOutput(sampleRate: Int) : Closeable {
     @Synchronized
     fun write(samples: ShortArray): Int {
         if (closed || samples.isEmpty()) return 0
-        return track.write(samples, 0, samples.size, AudioTrack.WRITE_NON_BLOCKING)
-            .coerceAtLeast(0)
+        require(samples.size % 2 == 0) { "Stereo PCM input must contain complete left/right sample pairs." }
+
+        val previousPendingCount = pendingSamples.size
+        val queued = if (pendingSamples.isEmpty()) samples else pendingSamples + samples
+        val result = track.write(queued, 0, queued.size, AudioTrack.WRITE_NON_BLOCKING)
+        check(result >= 0) { "AudioTrack write failed with error $result." }
+        val written = result.coerceAtMost(queued.size)
+
+        // AudioTrack may accept a partial number of shorts. Complete an odd
+        // partial stereo frame with silence so the next write starts on L.
+        val remainderStart = written
+        pendingSamples = if (written % 2 == 0) {
+            queued.copyOfRange(remainderStart, queued.size)
+        } else {
+            shortArrayOf(0) + queued.copyOfRange(remainderStart, queued.size)
+        }
+        if (pendingSamples.size > maxPendingSamples) {
+            val firstKept = pendingSamples.size - maxPendingSamples
+            pendingSamples = pendingSamples.copyOfRange(firstKept + (firstKept % 2), pendingSamples.size)
+        }
+        return (written - previousPendingCount).coerceIn(0, samples.size)
     }
 
     @Synchronized
@@ -73,6 +94,7 @@ class LibretroAudioOutput(sampleRate: Int) : Closeable {
         closed = true
         runCatching { track.pause() }
         runCatching { track.flush() }
+        pendingSamples = ShortArray(0)
         track.release()
     }
 }

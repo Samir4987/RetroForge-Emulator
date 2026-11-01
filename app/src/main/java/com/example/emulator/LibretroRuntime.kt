@@ -50,6 +50,7 @@ class LibretroRuntime(
         if (frontendLibrary.isFile && coreFile.isFile) state = State.READY
     }
 
+    @Synchronized
     fun loadRom(rom: File): Result<Unit> {
         if (state == State.CLOSED) {
             return Result.failure(IllegalStateException("Libretro runtime is closed."))
@@ -86,12 +87,14 @@ class LibretroRuntime(
     }
 
     /** Advances one emulated frame. Call from the emulator worker, not the UI thread. */
+    @Synchronized
     fun runFrame(): Result<Unit> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before running frames." }
         check(native?.nativeRunFrame() == true) { "Native Libretro core is not running." }
     }
 
     /** Returns the core's negotiated video and audio timing after a ROM is loaded. */
+    @Synchronized
     fun getAvInfo(): Result<LibretroAvInfo> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before reading AV information." }
         val values = checkNotNull(native).nativeGetAvInfo()
@@ -125,7 +128,11 @@ class LibretroRuntime(
         val pitch = info[2]
         val pixelFormat = info[3]
         if (width <= 0 || height <= 0 || pitch <= 0) return@runCatching null
+        require(width <= 4096 && height <= 4096) { "Native frontend returned unsafe video dimensions." }
+        val bytesPerPixel = if (pixelFormat == 1) 4 else 2
+        require(pitch.toLong() >= width.toLong() * bytesPerPixel) { "Native frontend returned an invalid video pitch." }
         val byteCount = Math.multiplyExact(pitch, height)
+        require(byteCount <= 64 * 1024 * 1024) { "Native frontend returned an oversized video frame." }
         var pixels = reusableVideoBuffer
         if (pixels == null || pixels.capacity() < byteCount) {
             pixels = ByteBuffer.allocateDirect(byteCount)
@@ -142,15 +149,17 @@ class LibretroRuntime(
     }
 
     /** Drains up to maxSamples interleaved stereo PCM16 samples from the core. */
+    @Synchronized
     fun drainAudioSamples(maxSamples: Int = 4096): Result<ShortArray> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before reading audio." }
-        require(maxSamples > 0) { "maxSamples must be positive." }
+        require(maxSamples >= 2 && maxSamples % 2 == 0) { "maxSamples must be a positive even number of stereo samples." }
         val destination = ShortArray(maxSamples)
         val count = checkNotNull(native).nativeCopyAudioSamples(destination)
         destination.copyOf(count.coerceIn(0, destination.size))
     }
 
     /** Libretro joypad button IDs follow RETRO_DEVICE_ID_JOYPAD. */
+    @Synchronized
     fun setJoypadButton(port: Int = 0, button: Int, pressed: Boolean) {
         check(state == State.GAME_LOADED) { "Load a ROM before sending input." }
         require(port in 0..1 && button in 0..15) { "Invalid Libretro joypad port or button." }
@@ -158,6 +167,7 @@ class LibretroRuntime(
     }
 
     /** Analog axis values are signed 16-bit values; stick 0 is left, 1 is right. */
+    @Synchronized
     fun setAnalogAxis(port: Int = 0, stick: Int, axis: Int, value: Int) {
         check(state == State.GAME_LOADED) { "Load a ROM before sending input." }
         require(port in 0..1 && stick in 0..1 && axis in 0..1) { "Invalid Libretro analog axis." }
@@ -165,11 +175,13 @@ class LibretroRuntime(
     }
 
     /** Pointer coordinates use Libretro's signed -32768..32767 coordinate range. */
+    @Synchronized
     fun setPointer(x: Int, y: Int, pressed: Boolean) {
         check(state == State.GAME_LOADED) { "Load a ROM before sending touch input." }
         checkNotNull(native).nativeSetPointer(x.coerceIn(-32768, 32767), y.coerceIn(-32768, 32767), pressed)
     }
 
+    @Synchronized
     fun close() {
         native?.nativeClose()
         native = null

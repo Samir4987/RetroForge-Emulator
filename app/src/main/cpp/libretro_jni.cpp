@@ -71,6 +71,7 @@ HwRenderCallback hw_render_callback{};
 bool hw_context_ready = false;
 std::vector<uint8_t> rom_data;
 
+std::recursive_mutex core_mutex;
 std::mutex media_mutex;
 std::vector<uint8_t> video_frame;
 unsigned video_width = 0;
@@ -225,7 +226,7 @@ bool environment(unsigned command, void* data) {
 }
 
 void video_refresh(const void* data, unsigned width, unsigned height, size_t pitch) {
-    if (width == 0 || height == 0) return;
+    if (width == 0 || height == 0 || width > 4096 || height > 4096) return;
     const bool hardware_frame =
         data == reinterpret_cast<const void*>(static_cast<intptr_t>(-1));
     std::vector<uint8_t> captured;
@@ -235,15 +236,16 @@ void video_refresh(const void* data, unsigned width, unsigned height, size_t pit
     if (hardware_frame) {
         if (!make_gles_current() || width > kGlSurfaceSize || height > kGlSurfaceSize) return;
         glFinish();
+        if (static_cast<size_t>(width) > std::numeric_limits<size_t>::max() / 4) return;
         source_pitch = static_cast<size_t>(width) * 4;
+        if (static_cast<size_t>(height) > std::numeric_limits<size_t>::max() / source_pitch) return;
         const size_t bytes = source_pitch * static_cast<size_t>(height);
         std::vector<uint8_t> rgba(bytes);
         captured.resize(bytes);
         glPixelStorei(GL_PACK_ALIGNMENT, 1);
         glReadPixels(0, 0, static_cast<GLsizei>(width), static_cast<GLsizei>(height),
                      GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
-        // Libretro XRGB8888 is B,G,R,X in little-endian memory. Flip GL's
-        // bottom-up rows so Android receives a top-left-origin frame.
+        // Convert GL's bottom-left RGBA rows to top-left XRGB8888 memory.
         for (unsigned y = 0; y < height; ++y) {
             const size_t source_row = static_cast<size_t>(height - 1 - y) * source_pitch;
             const size_t target_row = static_cast<size_t>(y) * source_pitch;
@@ -258,11 +260,25 @@ void video_refresh(const void* data, unsigned width, unsigned height, size_t pit
         }
         source = captured.data();
     } else {
-        if (!data || pitch < static_cast<size_t>(width) * 2 ||
-            height > std::numeric_limits<size_t>::max() / pitch) return;
+        if (!data) return;
+        unsigned pixel_format;
+        {
+            std::lock_guard<std::mutex> lock(media_mutex);
+            pixel_format = video_pixel_format;
+        }
+        const size_t bytes_per_pixel = pixel_format == 1 ? 4U : 2U;
+        if (static_cast<size_t>(width) >
+            std::numeric_limits<size_t>::max() / bytes_per_pixel) return;
+        const size_t minimum_pitch = static_cast<size_t>(width) * bytes_per_pixel;
+        if (pitch < minimum_pitch ||
+            static_cast<size_t>(height) > std::numeric_limits<size_t>::max() / pitch) return;
+        source_pitch = pitch;
     }
 
     const size_t bytes = source_pitch * static_cast<size_t>(height);
+    constexpr size_t kMaxVideoFrameBytes = 64U * 1024U * 1024U;
+    if (bytes == 0 || bytes > kMaxVideoFrameBytes) return;
+
     std::lock_guard<std::mutex> lock(media_mutex);
     video_frame.resize(bytes);
     std::memcpy(video_frame.data(), source, bytes);
@@ -272,7 +288,6 @@ void video_refresh(const void* data, unsigned width, unsigned height, size_t pit
     if (hardware_frame) video_pixel_format = 1;
     video_frame_ready = true;
 }
-
 void audio_sample(int16_t left, int16_t right) {
     std::lock_guard<std::mutex> lock(media_mutex);
     if (audio_samples.size() >= kMaxAudioSamples) {
@@ -283,7 +298,8 @@ void audio_sample(int16_t left, int16_t right) {
 }
 
 size_t audio_sample_batch(const int16_t* data, size_t frames) {
-    if (!data || frames == 0) return 0;
+    if (!data || frames == 0 ||
+        frames > std::numeric_limits<size_t>::max() / 2) return 0;
     std::lock_guard<std::mutex> lock(media_mutex);
     const size_t incoming = frames * 2;
     if (incoming >= kMaxAudioSamples) {
@@ -365,6 +381,7 @@ void close_core() {
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstring core_path, jstring rom_path) {
+    std::lock_guard<std::recursive_mutex> core_lock(core_mutex);
     close_core();
     if (!core_path || !rom_path) return env->NewStringUTF("Core path and ROM path are required.");
 
@@ -465,6 +482,7 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_emulator_LibretroNative_nativeRunFrame(JNIEnv*, jobject) {
+    std::lock_guard<std::recursive_mutex> core_lock(core_mutex);
     if (!initialized || !game_loaded || !run_frame) return JNI_FALSE;
     if (hw_context_ready && !make_gles_current()) return JNI_FALSE;
     run_frame();
@@ -474,6 +492,7 @@ Java_com_example_emulator_LibretroNative_nativeRunFrame(JNIEnv*, jobject) {
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
 Java_com_example_emulator_LibretroNative_nativeGetAvInfo(JNIEnv* env, jobject) {
+    std::lock_guard<std::recursive_mutex> core_lock(core_mutex);
     jdouble values[7];
     values[0] = core_av_info.base_width;
     values[1] = core_av_info.base_height;
@@ -519,7 +538,8 @@ Java_com_example_emulator_LibretroNative_nativeCopyAudioSamples(JNIEnv* env, job
     if (!destination) return 0;
     const jsize capacity = env->GetArrayLength(destination);
     std::lock_guard<std::mutex> lock(media_mutex);
-    const size_t count = std::min(audio_samples.size(), static_cast<size_t>(capacity));
+    size_t count = std::min(audio_samples.size(), static_cast<size_t>(capacity));
+    count -= count % 2; // Keep interleaved stereo L/R samples frame-aligned.
     if (count == 0) return 0;
     env->SetShortArrayRegion(destination, 0, static_cast<jsize>(count), audio_samples.data());
     audio_samples.erase(audio_samples.begin(), audio_samples.begin() + count);
@@ -553,5 +573,6 @@ Java_com_example_emulator_LibretroNative_nativeSetPointer(JNIEnv*, jobject, jint
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_emulator_LibretroNative_nativeClose(JNIEnv*, jobject) {
+    std::lock_guard<std::recursive_mutex> core_lock(core_mutex);
     close_core();
 }
