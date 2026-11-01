@@ -248,6 +248,7 @@ fun EmulatorScreen(
     var frameTicker by remember { mutableStateOf(0L) }
     LaunchedEffect(game, n3dsRuntime) {
         while (true) {
+            val frameStartedAtNanos = System.nanoTime()
             if (n3dsRuntime != null) {
                 if (n3dsRuntime.state == LibretroRuntime.State.GAME_LOADED &&
                     !emulatorCore.isPaused && !n3dsLifecyclePaused) {
@@ -272,9 +273,10 @@ fun EmulatorScreen(
                         n3dsAudioOutput?.pause()
                     }
                 }
-                val pacedDelay = (n3dsFrameIntervalMs.toFloat() / speedMultiplier)
+                val targetFrameMs = (n3dsFrameIntervalMs.toFloat() / speedMultiplier)
                     .roundToInt().coerceAtLeast(1).toLong()
-                delay(pacedDelay)
+                val elapsedFrameMs = (System.nanoTime() - frameStartedAtNanos) / 1_000_000L
+                delay((targetFrameMs - elapsedFrameMs).coerceAtLeast(0L))
             } else {
                 emulatorCore.tick()
                 frameTicker = emulatorCore.frameCounter
