@@ -13,6 +13,7 @@ import com.example.emulator.LibretroAudioOutput
 import com.example.emulator.LibretroCoreSpec
 import com.example.emulator.LibretroRuntime
 import com.example.emulator.LibretroVideoConverter
+import com.example.emulator.N3dsSaveStateStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -111,6 +112,9 @@ fun EmulatorScreen(
     var n3dsFrameIntervalMs by remember(game.id) { mutableLongStateOf(16L) }
     var n3dsAudioOutput by remember(game.id) { mutableStateOf<LibretroAudioOutput?>(null) }
     var n3dsLifecyclePaused by remember(game.id) { mutableStateOf(false) }
+    val n3dsSaveStore = remember(game.id) {
+        if (isNintendo3ds) N3dsSaveStateStore(File(context.filesDir, "retroforge/3ds/states")) else null
+    }
 
     var activeSkin by remember { mutableStateOf(initialSkin) }
     var enableScanlines by remember { mutableStateOf(true) }
@@ -180,8 +184,28 @@ fun EmulatorScreen(
             }
         }
 
-        // Load cloud saves if logged in
-        if (Firebase.auth.currentUser != null && saveStateRepository != null) {
+        if (isNintendo3ds) {
+            val localSlots = withContext(Dispatchers.IO) {
+                n3dsSaveStore?.listSlots(game.id).orEmpty()
+            }
+            saveStates.clear()
+            saveStates.addAll(localSlots.map { slot ->
+                SaveStateDto(
+                    id = "${game.id}_slot_$slot",
+                    userId = "local_user",
+                    gameId = game.id,
+                    gameTitle = game.title,
+                    system = game.system,
+                    slot = slot,
+                    label = "On-device 3DS state",
+                    stateData = LOCAL_N3DS_STATE_MARKER
+                )
+            })
+        }
+
+        // Load cloud saves if logged in (N3DS states remain on-device because
+        // full 3DS snapshots can exceed Firestore's per-document size limit).
+        if (!isNintendo3ds && Firebase.auth.currentUser != null && saveStateRepository != null) {
             try {
                 val existing = saveStateRepository.observeSaveStates(game.id).firstOrNull()
                 if (existing != null) {
@@ -383,6 +407,7 @@ fun EmulatorScreen(
                                     saveStateRepository = saveStateRepository,
                                     saveStates = saveStates,
                                     libretroRuntime = n3dsRuntime,
+                                    n3dsSaveStore = n3dsSaveStore,
                                     thumbnailBitmap = n3dsTopBitmap,
                                     onSaveFailed = { message ->
                                         Toast.makeText(context, message, Toast.LENGTH_LONG).show()
@@ -534,6 +559,7 @@ fun EmulatorScreen(
                         saveStateRepository = saveStateRepository,
                         saveStates = saveStates,
                         libretroRuntime = n3dsRuntime,
+                        n3dsSaveStore = n3dsSaveStore,
                         thumbnailBitmap = n3dsTopBitmap,
                         onSaveFailed = { message ->
                             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
@@ -563,7 +589,12 @@ fun EmulatorScreen(
                 },
                 onDeleteSlot = { saveId ->
                     coroutineScope.launch {
-                        saveStateRepository?.deleteSaveState(saveId)
+                        val localSlot = saveStates.firstOrNull { it.id == saveId }?.slot
+                        if (isNintendo3ds && localSlot != null) {
+                            withContext(Dispatchers.IO) { n3dsSaveStore?.delete(game.id, localSlot) }
+                        } else {
+                            saveStateRepository?.deleteSaveState(saveId)
+                        }
                         saveStates.removeAll { it.id == saveId }
                     }
                 },
@@ -572,6 +603,8 @@ fun EmulatorScreen(
         }
     }
 }
+
+private const val LOCAL_N3DS_STATE_MARKER = "local-n3ds-state"
 
 private fun sendNintendo3dsInput(
     runtime: LibretroRuntime,
@@ -614,17 +647,22 @@ private suspend fun saveStateToSlot(
     saveStateRepository: SaveStateRepository?,
     saveStates: MutableList<SaveStateDto>,
     libretroRuntime: LibretroRuntime? = null,
+    n3dsSaveStore: N3dsSaveStateStore? = null,
     thumbnailBitmap: Bitmap? = null,
     onSaveFailed: (String) -> Unit = {},
     onSaved: () -> Unit
 ) {
     val stateBase64 = if (emulatorCore.currentSystem == com.example.emulator.RetroSystem.N3DS) {
-        val result = withContext(Dispatchers.IO) { libretroRuntime?.serializeStateBase64() }
-        result?.getOrElse {
-            onSaveFailed(it.message ?: "The Nintendo 3DS core could not serialize a save state.")
-            return
-        } ?: run {
-            onSaveFailed("Nintendo 3DS save states are unavailable for this core.")
+        try {
+            withContext(Dispatchers.IO) {
+                val serialized = libretroRuntime?.serializeStateBytes()?.getOrThrow()
+                    ?: throw IllegalStateException("Nintendo 3DS save states are unavailable for this core.")
+                n3dsSaveStore?.save(game.id, slot, serialized)
+                    ?: throw IllegalStateException("Local Nintendo 3DS save storage is unavailable.")
+            }
+            LOCAL_N3DS_STATE_MARKER
+        } catch (failure: Exception) {
+            onSaveFailed(failure.message ?: "Could not save the Nintendo 3DS state.")
             return
         }
     } else {
@@ -659,7 +697,8 @@ private suspend fun saveStateToSlot(
     }
 
     // Persist to Cloud Firestore if signed in
-    if (Firebase.auth.currentUser != null && saveStateRepository != null) {
+    if (emulatorCore.currentSystem != com.example.emulator.RetroSystem.N3DS &&
+        Firebase.auth.currentUser != null && saveStateRepository != null) {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             saveStateRepository.saveState(newSave)
         }

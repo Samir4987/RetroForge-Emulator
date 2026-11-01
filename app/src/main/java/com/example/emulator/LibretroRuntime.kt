@@ -172,24 +172,36 @@ class LibretroRuntime(
 
     /** Returns a serialized Libretro state, or a failure when the core lacks support. */
     @Synchronized
-    fun serializeStateBase64(): Result<String> = runCatching {
+    fun serializeStateBytes(): Result<ByteArray> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before saving state." }
         val serialized = checkNotNull(native).nativeSerializeState()
             ?: throw UnsupportedOperationException("This Libretro core does not support save states.")
         require(serialized.isNotEmpty()) { "The core returned an empty save state." }
-        Base64.encodeToString(serialized, Base64.NO_WRAP)
+        require(serialized.size <= N3dsSaveStateStore.MAX_STATE_BYTES) {
+            "The core returned a save state larger than 256 MiB."
+        }
+        serialized
     }
+
+    @Synchronized
+    fun serializeStateBase64(): Result<String> =
+        serializeStateBytes().map { Base64.encodeToString(it, Base64.NO_WRAP) }
 
     /** Restores a state previously produced by this core and compatible core version. */
     @Synchronized
-    fun loadStateBase64(encodedState: String): Result<Unit> = runCatching {
+    fun loadStateBytes(serialized: ByteArray): Result<Unit> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before restoring state." }
-        val serialized = Base64.decode(encodedState, Base64.NO_WRAP)
-        require(serialized.isNotEmpty()) { "Save state is empty." }
+        require(serialized.isNotEmpty() && serialized.size <= N3dsSaveStateStore.MAX_STATE_BYTES) {
+            "Save state is empty or exceeds the 256 MiB safety limit."
+        }
         check(checkNotNull(native).nativeUnserializeState(serialized)) {
             "The core rejected this save state."
         }
     }
+
+    @Synchronized
+    fun loadStateBase64(encodedState: String): Result<Unit> =
+        loadStateBytes(Base64.decode(encodedState, Base64.NO_WRAP))
 
     /** Libretro joypad button IDs follow RETRO_DEVICE_ID_JOYPAD. */
     @Synchronized
