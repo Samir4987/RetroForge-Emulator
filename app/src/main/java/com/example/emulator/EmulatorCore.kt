@@ -47,6 +47,7 @@ class EmulatorCore(
     private var gameTick = 0
     private lateinit var campaign: GameCampaign
     private val collectedGems = mutableSetOf<Int>()
+    private var touchWasActive = false
 
     // N64 3D engine state
     private var pitch = 0f
@@ -78,6 +79,7 @@ class EmulatorCore(
         campaign = GameCampaign.forSystem(currentSystem)
         campaign.reset()
         collectedGems.clear()
+        touchWasActive = false
         recreateBuffers()
         resetGameState()
         rewindBuffer.clear()
@@ -136,7 +138,9 @@ class EmulatorCore(
         // Fast-forward step execution
         val steps = max(1, fastForwardMultiplier.toInt())
         for (s in 0 until steps) {
+            val previousLevel = campaign.view.level
             updateSimulation()
+            if (campaign.view.level != previousLevel) collectedGems.clear()
             frameCounter++
             if (frameCounter % 60 == 0L) {
                 playTimeSeconds++
@@ -205,7 +209,7 @@ class EmulatorCore(
             score += 5
             inputState.buttonA = false
         }
-        val gemPositions = listOf(52f to 75f, 118f to 55f)
+        val gemPositions = listOf(52f to 75f, 118f to 55f, 84f to 42f)
         gemPositions.forEachIndexed { index, gem ->
             if (index !in collectedGems && kotlin.math.hypot(playerX - gem.first, playerY - gem.second) < 13f) {
                 collectedGems.add(index)
@@ -253,10 +257,10 @@ class EmulatorCore(
 
     private fun updateNdsSimulation() {
         // Top screen: Boss threats; Bottom screen: Stylus touches
+        val touchPx = inputState.touchX * currentSystem.screenWidth
+        val touchPy = inputState.touchY * currentSystem.screenHeight
         if (inputState.isTouching) {
             shieldCharge = (shieldCharge - 1).coerceAtLeast(0)
-            val touchPx = inputState.touchX * currentSystem.screenWidth
-            val touchPy = inputState.touchY * currentSystem.screenHeight
 
             touchTargets.forEach { target ->
                 val dist = kotlin.math.hypot(touchPx - target[0], touchPy - target[1])
@@ -279,11 +283,12 @@ class EmulatorCore(
                 it[1] = 40f + (Math.random() * 110f).toFloat()
             }
         }
-        if (inputState.isTouching && campaign.view.bossActive) {
-            val dx = touchPx - 80f
-            val dy = touchPy - 72f
-            if (kotlin.math.hypot(dx, dy) < 24f) campaign.damageBoss()
+        if (inputState.isTouching && !touchWasActive && campaign.view.bossActive) {
+            val dx = touchPx - 128f
+            val dy = touchPy - 96f
+            if (kotlin.math.hypot(dx, dy) < 28f) campaign.damageBoss()
         }
+        touchWasActive = inputState.isTouching
     }
 
     private fun updateN64Simulation() {
@@ -656,6 +661,7 @@ class EmulatorCore(
         val detail = when {
             view.completed -> view.message
             view.bossActive -> "BOSS ${view.bossName} HP ${view.bossHealth}/${view.bossHealthMax}"
+            view.objectiveProgress == 0 -> view.story
             else -> "${view.objective}: ${view.objectiveProgress}/${view.objectiveGoal}"
         }
         canvas.drawText(detail.take(if (w < 200f) 28 else 44), 3f, h - 3f, paint)
