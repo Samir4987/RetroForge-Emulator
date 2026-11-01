@@ -46,6 +46,8 @@ class EmulatorCore(
     private var score = 0
     private var gameTick = 0
     private lateinit var campaign: GameCampaign
+    val activeCampaignView: CampaignView?
+        get() = if (::campaign.isInitialized) campaign.view else null
     private val collectedGems = mutableSetOf<Int>()
     private val defeatedDungeonSentries = mutableSetOf<Int>()
     private var touchWasActive = false
@@ -121,6 +123,15 @@ class EmulatorCore(
         lasers.clear()
         shieldCharge = 100
         collectedGems.clear()
+        gameTick = 0
+        frameCounter = 0L
+        playTimeSeconds = 0L
+        touchWasActive = false
+        touchTargets.forEachIndexed { index, target ->
+            target[0] = 40f + index * 32f
+            target[1] = 50f + (index % 3) * 30f
+            target[3] = 1f
+        }
     }
 
     fun tick() {
@@ -145,6 +156,13 @@ class EmulatorCore(
             if (campaign.view.level != previousLevel) {
                 collectedGems.clear()
                 defeatedDungeonSentries.clear()
+                lasers.clear()
+                touchWasActive = false
+                touchTargets.forEachIndexed { index, target ->
+                    target[0] = 40f + index * 32f
+                    target[1] = 50f + (index % 3) * 30f
+                    target[3] = 1f
+                }
             }
             frameCounter++
             if (frameCounter % 60 == 0L) {
