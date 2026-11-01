@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -107,15 +108,26 @@ fun EmulatorScreen(
         }
     }
 
-    // High performance frame loop
+    // High performance frame loop. Experimental multipliers are best-effort
+    // and remain limited by device and emulator-core performance.
     var frameTicker by remember { mutableStateOf(0L) }
     LaunchedEffect(Unit) {
+        var nextFrameDeadlineNs = System.nanoTime()
         while (true) {
             emulatorCore.tick()
             frameTicker = emulatorCore.frameCounter
-            // 60 FPS standard timing adjusted for fast forward
-            val frameDelay = (16L / emulatorCore.fastForwardMultiplier.toLong().coerceAtLeast(1L)).coerceAtLeast(4L)
-            delay(frameDelay)
+
+            val speed = emulatorCore.fastForwardMultiplier.toDouble().coerceIn(1.0, 1000.0)
+            val frameIntervalNs = (1_000_000_000.0 / (60.0 * speed)).toLong().coerceAtLeast(1L)
+            nextFrameDeadlineNs += frameIntervalNs
+            val remainingNs = nextFrameDeadlineNs - System.nanoTime()
+            if (remainingNs >= 1_000_000L) {
+                delay((remainingNs / 1_000_000L).coerceAtLeast(1L))
+            } else {
+                // Yield instead of blocking the UI thread at sub-millisecond targets.
+                if (remainingNs < 0L) nextFrameDeadlineNs = System.nanoTime()
+                kotlinx.coroutines.yield()
+            }
         }
     }
 
@@ -200,12 +212,35 @@ fun EmulatorScreen(
                                 expanded = showSpeedMenu,
                                 onDismissRequest = { showSpeedMenu = false }
                             ) {
-                                listOf(1.0f, 1.5f, 2.0f, 4.0f, 8.0f).forEach { spd ->
+                                listOf(1.0f, 2.0f, 4.0f, 8.0f, 16.0f).forEach { spd ->
                                     DropdownMenuItem(
-                                        text = { Text("${spd}x Speed") },
+                                        text = { Text("${spd.toInt()}x Speed") },
                                         onClick = {
                                             speedMultiplier = spd
                                             emulatorCore.fastForwardMultiplier = spd
+                                            showSpeedMenu = false
+                                        }
+                                    )
+                                }
+                                HorizontalDivider()
+                                Text(
+                                    text = "EXPERIMENTAL",
+                                    color = Color(0xFFFFB74D),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                                )
+                                listOf(32, 64, 128, 256, 512, 1000).forEach { requestedSpeed ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                "${requestedSpeed}x Speed • Experimental",
+                                                color = Color(0xFFFFB74D)
+                                            )
+                                        },
+                                        onClick = {
+                                            speedMultiplier = requestedSpeed.toFloat()
+                                            emulatorCore.fastForwardMultiplier = requestedSpeed.toFloat()
                                             showSpeedMenu = false
                                         }
                                     )
