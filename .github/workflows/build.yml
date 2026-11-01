@@ -202,6 +202,33 @@ jobs:
           set -euxo pipefail
           ./gradlew --no-daemon assembleDebug
 
+      - name: Verify APK contains every N64 core ABI
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import zipfile
+
+          apk = "app/build/outputs/apk/debug/app-debug.apk"
+          abis = ("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+          core_name = "mupen64plus_next_libretro_android.so"
+          with zipfile.ZipFile(apk) as archive:
+              entries = set(archive.namelist())
+              missing = [
+                  f"lib/{abi}/{core_name}"
+                  for abi in abis
+                  if f"lib/{abi}/{core_name}" not in entries
+              ]
+              if missing:
+                  raise SystemExit("N64 core missing from APK: " + ", ".join(missing))
+              for abi in abis:
+                  name = f"lib/{abi}/{core_name}"
+                  info = archive.getinfo(name)
+                  if info.file_size == 0:
+                      raise SystemExit(f"N64 core is empty in APK: {name}")
+                  print(f"Verified {name}: {info.file_size} bytes")
+          PY
+
       - name: Verify APK exists
         shell: bash
         run: |
