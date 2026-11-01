@@ -158,11 +158,26 @@ jobs:
           set -euxo pipefail
           ./gradlew --no-daemon :app:externalNativeBuildDebug
 
-      - name: Run unit tests
+      - name: Set up Node.js for Firebase Emulator Suite
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Firebase CLI
         shell: bash
         run: |
           set -euxo pipefail
-          ./gradlew --no-daemon :app:testDebugUnitTest
+          npm install --global firebase-tools@14.22.0
+          firebase --version
+
+      - name: Run unit tests with Firebase emulators
+        shell: bash
+        run: |
+          set -euxo pipefail
+          firebase emulators:exec \
+            --project demo-no-project \
+            --only auth,firestore \
+            "./gradlew --no-daemon :app:testDebugUnitTest"
 
       - name: Build and package pinned mGBA Libretro core
         shell: bash
