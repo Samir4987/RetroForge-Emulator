@@ -186,11 +186,15 @@ jobs:
           export PATH="$ANDROID_SDK_ROOT/cmake/3.22.1/bin:$PATH"
           bash scripts/build-mgba-android.sh
 
-      - name: Build and package pinned Mupen64Plus-Next GLES3 core
+      - name: Build and package pinned Mupen64Plus-Next GLES3 cores
         shell: bash
         run: |
           set -euxo pipefail
-          bash scripts/build-mupen64plus-android.sh
+          # Match the app's four configured Android ABIs so N64 is available
+          # on 64-bit and 32-bit ARM/x86 devices and emulators.
+          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+            N64_ANDROID_ABI="$abi" bash scripts/build-mupen64plus-android.sh
+          done
 
       - name: Build debug APK
         shell: bash
