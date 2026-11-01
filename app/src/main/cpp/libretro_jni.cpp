@@ -227,15 +227,51 @@ bool environment(unsigned command, void* data) {
 }
 
 void video_refresh(const void* data, unsigned width, unsigned height, size_t pitch) {
-    if (!data || width == 0 || height == 0 || pitch == 0 ||
-        height > std::numeric_limits<size_t>::max() / pitch) return;
-    const size_t bytes = pitch * static_cast<size_t>(height);
+    if (width == 0 || height == 0) return;
+    const bool hardware_frame =
+        data == reinterpret_cast<const void*>(static_cast<intptr_t>(-1));
+    std::vector<uint8_t> captured;
+    const void* source = data;
+    size_t source_pitch = pitch;
+
+    if (hardware_frame) {
+        if (!make_gles_current() || width > kGlSurfaceSize || height > kGlSurfaceSize) return;
+        glFinish();
+        source_pitch = static_cast<size_t>(width) * 4;
+        const size_t bytes = source_pitch * static_cast<size_t>(height);
+        std::vector<uint8_t> rgba(bytes);
+        captured.resize(bytes);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels(0, 0, static_cast<GLsizei>(width), static_cast<GLsizei>(height),
+                     GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+        // Libretro XRGB8888 is B,G,R,X in little-endian memory. Flip GL's
+        // bottom-up rows so Android receives a top-left-origin frame.
+        for (unsigned y = 0; y < height; ++y) {
+            const size_t source_row = static_cast<size_t>(height - 1 - y) * source_pitch;
+            const size_t target_row = static_cast<size_t>(y) * source_pitch;
+            for (unsigned x = 0; x < width; ++x) {
+                const size_t src = source_row + static_cast<size_t>(x) * 4;
+                const size_t dst = target_row + static_cast<size_t>(x) * 4;
+                captured[dst] = rgba[src + 2];
+                captured[dst + 1] = rgba[src + 1];
+                captured[dst + 2] = rgba[src];
+                captured[dst + 3] = 0;
+            }
+        }
+        source = captured.data();
+    } else {
+        if (!data || pitch < static_cast<size_t>(width) * 2 ||
+            height > std::numeric_limits<size_t>::max() / pitch) return;
+    }
+
+    const size_t bytes = source_pitch * static_cast<size_t>(height);
     std::lock_guard<std::mutex> lock(media_mutex);
     video_frame.resize(bytes);
-    std::memcpy(video_frame.data(), data, bytes);
+    std::memcpy(video_frame.data(), source, bytes);
     video_width = width;
     video_height = height;
-    video_pitch = pitch;
+    video_pitch = source_pitch;
+    if (hardware_frame) video_pixel_format = 1;
     video_frame_ready = true;
 }
 
