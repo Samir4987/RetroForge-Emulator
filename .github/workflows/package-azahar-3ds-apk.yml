@@ -1,0 +1,108 @@
+name: Package Nintendo 3DS core into Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      azahar_run_id:
+        description: Successful Azahar build workflow run ID
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  package-android-arm64:
+    name: Stage Azahar and assemble Android APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: /home/runner/android-sdk
+      ANDROID_SDK_ROOT: /home/runner/android-sdk
+      GRADLE_VERSION: "9.3.1"
+
+    steps:
+      - name: Checkout selected integration branch
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+
+      - name: Install required Android SDK packages
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download Azahar build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: azahar-libretro-android-arm64
+          path: .build/azahar-artifacts/arm64-v8a
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.azahar_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify core and license metadata
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -s .build/azahar-artifacts/arm64-v8a/azahar_libretro.so
+          test -s .build/azahar-artifacts/arm64-v8a/AZAHAR-LICENSE.txt
+          test -s .build/azahar-artifacts/arm64-v8a/AZAHAR-REVISION.txt
+          grep -qx "01623d2fb707317410225c0eced82e3e0c84edc1" \
+            .build/azahar-artifacts/arm64-v8a/AZAHAR-REVISION.txt
+
+      - name: Bootstrap missing Gradle wrapper JAR
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
+            TEMP_DIR="$(mktemp -d)"
+            trap 'rm -rf "$TEMP_DIR"' EXIT
+            cd "$TEMP_DIR"
+            wget -q "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -O gradle.zip
+            unzip -q gradle.zip
+            mkdir wrapper-project
+            cd wrapper-project
+            printf 'rootProject.name = "wrapper-bootstrap"\n' > settings.gradle
+            printf '// Temporary wrapper bootstrap project\n' > build.gradle
+            "../gradle-${GRADLE_VERSION}/bin/gradle" wrapper --gradle-version "${GRADLE_VERSION}" --distribution-type bin
+            mkdir -p "$GITHUB_WORKSPACE/gradle/wrapper"
+            cp gradle/wrapper/gradle-wrapper.jar "$GITHUB_WORKSPACE/gradle/wrapper/gradle-wrapper.jar"
+          fi
+          chmod +x "$GITHUB_WORKSPACE/gradlew"
+          test -s "$GITHUB_WORKSPACE/gradle/wrapper/gradle-wrapper.jar"
+
+      - name: Stage Azahar core and build APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./gradlew --no-daemon :app:stageAzaharCore :app:assembleDebug
+
+      - name: Verify packaged ARM64 core and APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/azahar_libretro\.so$'
+          ls -lh "$APK"
+
+      - name: Upload 3DS-enabled debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroForge-Android-APK-with-Azahar-3DS
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
