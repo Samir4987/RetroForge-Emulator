@@ -3,6 +3,7 @@ package com.example.ui.screens
 import android.widget.Toast
 import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Base64
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.lifecycle.Lifecycle
@@ -14,6 +15,7 @@ import com.example.emulator.LibretroRuntime
 import com.example.emulator.LibretroVideoConverter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.roundToInt
 import androidx.activity.compose.BackHandler
@@ -93,7 +95,12 @@ fun EmulatorScreen(
     val n3dsRuntime = remember(game.id, isNintendo3ds) {
         if (isNintendo3ds) {
             val frontend = File(context.applicationInfo.nativeLibraryDir, "libretroforge_libretro.so")
-            LibretroRuntime(frontend, checkNotNull(LibretroCoreSpec.forSystem(com.example.emulator.RetroSystem.N3DS)))
+            LibretroRuntime(
+                frontend,
+                checkNotNull(LibretroCoreSpec.forSystem(com.example.emulator.RetroSystem.N3DS)),
+                File(context.filesDir, "retroforge/3ds/system"),
+                File(context.filesDir, "retroforge/3ds/saves")
+            )
         } else {
             null
         }
@@ -363,6 +370,11 @@ fun EmulatorScreen(
                                     emulatorCore = emulatorCore,
                                     saveStateRepository = saveStateRepository,
                                     saveStates = saveStates,
+                                    libretroRuntime = n3dsRuntime,
+                                    thumbnailBitmap = n3dsTopBitmap,
+                                    onSaveFailed = { message ->
+                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                    },
                                     onSaved = {
                                         Toast.makeText(context, "Quick Saved to Slot 1", Toast.LENGTH_SHORT).show()
                                     }
@@ -506,13 +518,22 @@ fun EmulatorScreen(
                         emulatorCore = emulatorCore,
                         saveStateRepository = saveStateRepository,
                         saveStates = saveStates,
+                        libretroRuntime = n3dsRuntime,
+                        thumbnailBitmap = n3dsTopBitmap,
+                        onSaveFailed = { message ->
+                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                        },
                         onSaved = {
                             Toast.makeText(context, "State saved to Slot ${slot + 1}", Toast.LENGTH_SHORT).show()
                         }
                     )
                 },
                 onLoadFromSlot = { dto ->
-                    val success = emulatorCore.loadSaveStateBase64(dto.stateData)
+                    val success = if (isNintendo3ds) {
+                        n3dsRuntime?.loadStateBase64(dto.stateData)?.isSuccess == true
+                    } else {
+                        emulatorCore.loadSaveStateBase64(dto.stateData)
+                    }
                     if (success) {
                         Toast.makeText(context, "Loaded Slot ${dto.slot + 1}", Toast.LENGTH_SHORT).show()
                         showSlotDialog = false
@@ -558,16 +579,39 @@ private fun sendNintendo3dsInput(
     runtime.setAnalogAxis(stick = 0, axis = 1, value = (-input.stickY * 32_767f).roundToInt())
 }
 
+private fun bitmapToBase64(bitmap: Bitmap): String {
+    val output = ByteArrayOutputStream()
+    check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+        "Could not encode the save-state thumbnail."
+    }
+    return Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+}
+
 private fun saveStateToSlot(
     slot: Long,
     game: RetroGame,
     emulatorCore: EmulatorCore,
     saveStateRepository: SaveStateRepository?,
     saveStates: MutableList<SaveStateDto>,
+    libretroRuntime: LibretroRuntime? = null,
+    thumbnailBitmap: Bitmap? = null,
+    onSaveFailed: (String) -> Unit = {},
     onSaved: () -> Unit
 ) {
-    val stateBase64 = emulatorCore.exportSaveStateBase64()
-    val thumbnail = emulatorCore.generateThumbnailBase64()
+    val stateBase64 = if (emulatorCore.currentSystem == com.example.emulator.RetroSystem.N3DS) {
+        val result = libretroRuntime?.serializeStateBase64()
+        result?.getOrElse {
+            onSaveFailed(it.message ?: "The Nintendo 3DS core could not serialize a save state.")
+            return
+        } ?: run {
+            onSaveFailed("Nintendo 3DS save states are unavailable for this core.")
+            return
+        }
+    } else {
+        emulatorCore.exportSaveStateBase64()
+    }
+    val thumbnail = thumbnailBitmap?.let(::bitmapToBase64)
+        ?: emulatorCore.generateThumbnailBase64()
     val uid = Firebase.auth.currentUser?.uid ?: "local_user"
     val docId = "${game.id}_slot_$slot"
 
