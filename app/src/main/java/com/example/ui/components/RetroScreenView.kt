@@ -21,6 +21,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -60,6 +61,7 @@ fun RetroScreenView(
     isPaused: Boolean = false,
     enableScanlines: Boolean = true,
     dualScreenLayout: DualScreenLayout = DualScreenLayout.STACKED,
+    frameVersion: Long = 0L,
     onTouchInput: ((x: Float, y: Float, isTouching: Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -80,6 +82,7 @@ fun RetroScreenView(
                         bitmap = screenBitmap,
                         system = system,
                         enableScanlines = enableScanlines,
+                        frameVersion = frameVersion,
                         modifier = Modifier.fillMaxWidth(0.92f),
                         isPaused = isPaused,
                         isRewinding = isRewinding,
@@ -112,6 +115,7 @@ fun RetroScreenView(
                         bitmap = screenBitmap,
                         system = system,
                         enableScanlines = enableScanlines,
+                        frameVersion = frameVersion,
                         modifier = Modifier.weight(1f),
                         isPaused = isPaused,
                         isRewinding = isRewinding,
@@ -180,6 +184,7 @@ private fun DisplayPanel(
     bitmap: Bitmap,
     system: RetroSystem,
     enableScanlines: Boolean,
+    frameVersion: Long,
     modifier: Modifier,
     isPaused: Boolean = false,
     isRewinding: Boolean = false,
@@ -227,7 +232,9 @@ private fun DisplayPanel(
             .clip(RoundedCornerShape(8.dp))
             .background(Color.Black)
     ) {
-        ScreenCanvas(bitmap = bitmap, enableScanlines = enableScanlines)
+        key(frameVersion) {
+            ScreenCanvas(bitmap = bitmap, enableScanlines = enableScanlines)
+        }
         if (isPaused || isRewinding || fastForwardMultiplier > 1f) {
             ScreenHudOverlay(
                 isRewinding = isRewinding,

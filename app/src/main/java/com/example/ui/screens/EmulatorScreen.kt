@@ -525,6 +525,7 @@ fun EmulatorScreen(
                 screenBitmap = n3dsTopBitmap ?: emulatorCore.screenBitmap,
                 bottomScreenBitmap = n3dsBottomBitmap ?: emulatorCore.bottomScreenBitmap,
                 dualScreenLayout = if (isNintendo3ds) n3dsLayout else DualScreenLayout.STACKED,
+                frameVersion = frameTicker,
                 isRewinding = emulatorCore.isRewinding,
                 fastForwardMultiplier = emulatorCore.fastForwardMultiplier,
                 isPaused = emulatorCore.isPaused,
