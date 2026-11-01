@@ -48,11 +48,7 @@ abstract class FirestoreEmulatorTestBase {
             )
           )
           .setProjectId(PROJECT_ID)
-          .setApiKey(
-            context.getString(
-              context.resources.getIdentifier("google_api_key", "string", context.packageName)
-            )
-          )
+          .setApiKey("fake-api-key-for-emulator")
           .build()
       )
     } else {
