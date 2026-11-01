@@ -70,6 +70,7 @@ import com.example.data.model.SaveStateDto
 import com.example.data.repository.SaveStateRepository
 import com.example.emulator.ControllerSkin
 import com.example.emulator.EmulatorCore
+import com.example.ui.components.DualScreenLayout
 import com.example.ui.components.RetroScreenView
 import com.example.ui.components.SaveSlotDialog
 import com.example.ui.components.VirtualController
@@ -112,6 +113,8 @@ fun EmulatorScreen(
     var n3dsFrameIntervalMs by remember(game.id) { mutableLongStateOf(16L) }
     var n3dsAudioOutput by remember(game.id) { mutableStateOf<LibretroAudioOutput?>(null) }
     var n3dsLifecyclePaused by remember(game.id) { mutableStateOf(false) }
+    var n3dsLayout by remember(game.id) { mutableStateOf(DualScreenLayout.STACKED) }
+    var showN3dsLayoutMenu by remember { mutableStateOf(false) }
     val n3dsSaveStore = remember(game.id) {
         if (isNintendo3ds) N3dsSaveStateStore(File(context.filesDir, "retroforge/3ds/states")) else null
     }
@@ -376,6 +379,36 @@ fun EmulatorScreen(
                             }
                         }
 
+                        if (isNintendo3ds) {
+                            Box {
+                                IconButton(
+                                    onClick = { showN3dsLayoutMenu = true },
+                                    modifier = Modifier.testTag("button_n3ds_layout")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tv,
+                                        contentDescription = "3DS screen layout",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showN3dsLayoutMenu,
+                                    onDismissRequest = { showN3dsLayoutMenu = false }
+                                ) {
+                                    DualScreenLayout.entries.forEach { layout ->
+                                        DropdownMenuItem(
+                                            text = { Text(layout.label) },
+                                            onClick = {
+                                                n3dsLayout = layout
+                                                showN3dsLayoutMenu = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         // Pause Toggle
                         IconButton(
                             onClick = {
@@ -491,6 +524,7 @@ fun EmulatorScreen(
                 system = emulatorCore.currentSystem,
                 screenBitmap = n3dsTopBitmap ?: emulatorCore.screenBitmap,
                 bottomScreenBitmap = n3dsBottomBitmap ?: emulatorCore.bottomScreenBitmap,
+                dualScreenLayout = if (isNintendo3ds) n3dsLayout else DualScreenLayout.STACKED,
                 isRewinding = emulatorCore.isRewinding,
                 fastForwardMultiplier = emulatorCore.fastForwardMultiplier,
                 isPaused = emulatorCore.isPaused,
