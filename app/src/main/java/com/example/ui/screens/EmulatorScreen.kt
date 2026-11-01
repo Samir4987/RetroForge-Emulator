@@ -628,7 +628,7 @@ private suspend fun saveStateToSlot(
             return
         }
     } else {
-        withContext(Dispatchers.IO) { emulatorCore.exportSaveStateBase64() }
+        emulatorCore.exportSaveStateBase64()
     }
     val thumbnail = if (thumbnailBitmap != null) {
         withContext(Dispatchers.Default) { bitmapToBase64(thumbnailBitmap) }
