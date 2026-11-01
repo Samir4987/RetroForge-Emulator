@@ -1,34 +1,34 @@
 # Nintendo 64 integration status
 
-## Current state
+## Implemented in this branch
 
-- The application already identifies `.n64`, `.z64`, and `.v64` files as Nintendo 64 content.
-- `LibretroCoreSpec` already selects the Mupen64Plus-Next Libretro core candidate.
-- This branch adds native Libretro analog-axis forwarding for the N64 left stick and maps the four C-buttons to the right analog stick.
-- Unit tests cover the N64 core selection and analog mapping.
+-The application recognizes `.n64`, `.z64`, and `.v64` ROM extensions and selects the Mupen64Plus-Next Libretro core candidate.
+- The JNI frontend forwards the standard Libretro joypad and analog interfaces. RetroForge's left stick maps to the N64 analog stick; the four C-buttons map to the right analog axes.
+- The JNI frontend accepts Libretro GLES2 and GLES3 hardware-rendering requests, creates an EGL pbuffer context, supplies GL procedure lookup and framebuffer callbacks, and attempts RGBA frame readback into the Android bitmap pipeline.
+- CI compiles the JNI frontend for all configured Android ABIs and runs the Android unit tests.
 
-## Important implementation blocker
+## Not yet complete / not yet verified
 
-The current JNI frontend only accepts Libretro software pixel formats. Mupen64Plus-Next uses GLideN64 by default and requests a Libretro hardware-rendering context. The current environment callback rejects that request, and the frontend has no EGL/GLES context lifecycle or hardware-frame readback yet.
+- The Mupen64Plus-Next shared library is **not built or packaged**. The current workflow's native-core build step is for mGBA (a shared dependency from the GBA branch), not N64.
+- The EGL implementation is an initial off-screen integration. It has not been validated against GLideN64 on a physical Android device. In particular, pbuffer/default-framebuffer assumptions, GLES3 config selection, GL state/readback behavior, and context lifecycle need runtime validation.
+- No N64 ROM has been verified to boot or play in RetroForge. Audio, save data, sustained frame pacing, controller mapping, and clean shutdown remain unverified for N64.
 
-Therefore, adding the Mupen64Plus-Next shared library alone would not make N64 gameplay work. The next implementation phase must add an Android EGL/GLES context (including context reset/destroy callbacks and framebuffer readback) or a verified software-rendering path supported by the core.
+## Core provenance and build target
 
-## Build and packaging plan
+- Upstream: https://github.com/libretro/mupen64plus-libretro-nx
+- Upstream revision currently inspected: `6752836de8b224febfd5708444755b77712ac939` (upstream master, 2026-09-11).
+- Upstream CI defines Android GLES2 and GLES3 targets for `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64`. Its GLES3 target sets `GLES3=1` and uses the core name `mupen64plus_next_gles3`.
+- Upstream core is GPL-3.0; packaging must retain its license and source/provenance notices.
 
-1. Pin an upstream Mupen64Plus-Next revision and preserve its GPL-3.0 license notice.
-2. Build Android GLES3 and/or GLES2 variants with the Android NDK for supported ABIs.
-3. Package the core under the filename in `LibretroCoreSpec`.
-4. Extend the frontend to satisfy the core's hardware-rendering contract.
-5. Add CI checks for ABI packaging and native symbol loading.
-6. Validate a legally obtained N64 ROM through load, video, audio, analog input, save data, and clean shutdown before calling N64 playable.
+## Acceptance checklist
 
-## Validation status
+- [x] N64 extensions resolve to the Mupen64Plus-Next candidate.
+- [x] Analog axes and C-button mapping are implemented and unit-tested.
+- [x] JNI frontend has an initial GLES2/GLES3 EGL hardware-rendering path.
+- [ ] Pin the exact upstream source revision in the repository build.
+- [ ] Build and package the N64 core for Android ABIs (at minimum `arm64-v8a`; add others when validated).
+- [ ] Confirm the core's requested hardware context matches the EGL context actually provided.
+- [ ] Boot a legally obtained N64 ROM on an Android device and verify video, audio, input, save data, frame pacing, and shutdown.
+- [ ] Keep N64 marked experimental until runtime acceptance checks pass.
 
-- [x] N64 ROM extensions are recognized by the existing core catalog.
-- [x] Native analog axes are forwarded by the JNI bridge.
-- [x] Unit tests cover N64 core selection and analog mapping.
-- [ ] Mupen64Plus-Next Android core is built and packaged.
-- [ ] EGL/GLES hardware rendering is implemented.
-- [ ] N64 ROM boot and gameplay are verified.
-
-A passing Android APK build is not proof of N64 gameplay. Keep the system marked as experimental until the final runtime checks pass.
+A successful frontend compile or APK build is not evidence that N64 gameplay works.
