@@ -15,6 +15,7 @@ internal class LibretroNative(
 ) {
     external fun nativeSetDirectories(systemDirectory: String, saveDirectory: String, assetsDirectory: String)
     external fun nativeOpen(corePath: String, romPath: String): String?
+    external fun nativeGetSampleRate(): Double
     external fun nativeRunFrame(): Boolean
     external fun nativeSetInputState(
         buttonMask: Int,
