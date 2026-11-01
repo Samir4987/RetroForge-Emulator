@@ -7,6 +7,11 @@ on:
     branches: [main, master, feature/gba-core-integration, feature/n64-mupen64plus-integration]
   pull_request:
 
+# Push and pull_request events for the same branch should not build twice.
+concurrency:
+  group: android-build-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
