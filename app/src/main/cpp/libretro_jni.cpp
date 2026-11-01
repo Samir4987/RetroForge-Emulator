@@ -37,6 +37,7 @@ constexpr unsigned kJoypadButtons = 16;
 void* core = nullptr;
 bool initialized = false;
 bool game_loaded = false;
+AvInfo core_av_info{};
 std::vector<uint8_t> rom_data;
 
 std::mutex media_mutex;
@@ -172,6 +173,7 @@ void reset_frontend_state() {
     video_pitch = 0;
     video_pixel_format = 0;
     video_frame_ready = false;
+    core_av_info = AvInfo{};
     audio_samples.clear();
     for (auto& port : joypad_state) port.fill(0);
     for (auto& port : analog_state) port.fill(0);
@@ -288,8 +290,7 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
         return env->NewStringUTF("Libretro core rejected the ROM.");
     }
     game_loaded = true;
-    AvInfo av_info{};
-    get_av_info(&av_info);
+    get_av_info(&core_av_info);
     return nullptr;
 }
 
@@ -298,6 +299,21 @@ Java_com_example_emulator_LibretroNative_nativeRunFrame(JNIEnv*, jobject) {
     if (!initialized || !game_loaded || !run_frame) return JNI_FALSE;
     run_frame();
     return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jdoubleArray JNICALL
+Java_com_example_emulator_LibretroNative_nativeGetAvInfo(JNIEnv* env, jobject) {
+    jdouble values[7];
+    values[0] = core_av_info.base_width;
+    values[1] = core_av_info.base_height;
+    values[2] = core_av_info.max_width;
+    values[3] = core_av_info.max_height;
+    values[4] = core_av_info.aspect_ratio;
+    values[5] = core_av_info.fps;
+    values[6] = core_av_info.sample_rate;
+    jdoubleArray result = env->NewDoubleArray(7);
+    if (result) env->SetDoubleArrayRegion(result, 0, 7, values);
+    return result;
 }
 
 extern "C" JNIEXPORT jintArray JNICALL
