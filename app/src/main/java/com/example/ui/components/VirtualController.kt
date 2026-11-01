@@ -231,7 +231,7 @@ fun VirtualController(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Left Side: D-Pad or Analog Joystick for N64
-                if (system == RetroSystem.N64) {
+                if (system == RetroSystem.N64 || system == RetroSystem.N3DS) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         VirtualAnalogStick(
                             skin = skin,
@@ -319,7 +319,7 @@ fun VirtualController(
                             )
                         }
                     }
-                    RetroSystem.GBA, RetroSystem.NDS -> {
+                    RetroSystem.GBA, RetroSystem.NDS, RetroSystem.N3DS -> {
                         // Diamond ABXY layout
                         Box(
                             modifier = Modifier
