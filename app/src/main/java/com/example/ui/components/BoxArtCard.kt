@@ -214,6 +214,7 @@ fun SystemBrandingBanner(system: String) {
         "GBC" -> Triple(Color(0xFF6C3483), Color(0xFFFFD54F), "GAME BOY COLOR™")
         "GBA" -> Triple(Color(0xFF154360), Color(0xFF85C1E9), "GAME BOY ADVANCE™")
         "NDS" -> Triple(Color(0xFF212529), Color(0xFF00E5FF), "NINTENDO DS™")
+        "N3DS" -> Triple(Color(0xFF6C3483), Color(0xFFFFD54F), "NINTENDO 3DS™")
         "N64" -> Triple(Color(0xFF881B0E), Color(0xFFFFCC00), "NINTENDO 64™")
         else -> Triple(Color(0xFF1C1E2D), Color.White, system)
     }
