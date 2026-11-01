@@ -89,7 +89,7 @@ fi
 
 "${readelf_tool}" -h "${core_path}" | grep -E 'Class:|Machine:'
 symbols="$("${readelf_tool}" --dyn-syms --wide "${core_path}")"
-for symbol in retro_api_version retro_init retro_deinit retro_get_system_info retro_get_system_av_info retro_load_game retro_run retro_unload_game; do
+for symbol in retro_api_version retro_set_environment retro_set_video_refresh retro_set_audio_sample retro_set_audio_sample_batch retro_set_input_poll retro_set_input_state retro_init retro_deinit retro_get_system_info retro_get_system_av_info retro_load_game retro_run retro_unload_game; do
   if ! grep -Eq "[[:space:]]${symbol}$" <<<"${symbols}"; then
     echo "Required Libretro export missing: ${symbol}" >&2
     exit 1
