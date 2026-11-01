@@ -407,6 +407,7 @@ class EmulatorCore(
         val gemBounce = (sin(gameTick * 0.1) * 3).toFloat()
         canvas.drawCircle(52f, 75f + gemBounce, 4f, paint)
         canvas.drawCircle(118f, 55f + gemBounce, 4f, paint)
+        canvas.drawCircle(84f, 42f - gemBounce, 4f, paint)
 
         // Player (Red & Yellow cap)
         paint.color = Color.rgb(240, 50, 50)
@@ -647,6 +648,57 @@ class EmulatorCore(
         val panelHeight = if (currentSystem == RetroSystem.GBC) 22f else 20f
         paint.color = Color.argb(220, 8, 12, 20)
         canvas.drawRect(0f, h - panelHeight, w, h, paint)
+        if (view.bossActive) {
+            paint.style = Paint.Style.FILL
+            when (currentSystem) {
+                RetroSystem.GB -> {
+                    paint.color = Color.rgb(15, 56, 15)
+                    canvas.drawRect(w / 2f - 9f, h / 2f - 9f, w / 2f + 9f, h / 2f + 9f, paint)
+                    paint.color = Color.rgb(155, 188, 15)
+                    canvas.drawRect(w / 2f - 5f, h / 2f - 3f, w / 2f - 2f, h / 2f, paint)
+                    canvas.drawRect(w / 2f + 2f, h / 2f - 3f, w / 2f + 5f, h / 2f, paint)
+                }
+                RetroSystem.GBC -> {
+                    paint.color = Color.rgb(220, 80, 255)
+                    val crystal = Path().apply {
+                        moveTo(w / 2f, h / 2f - 18f)
+                        lineTo(w / 2f + 14f, h / 2f)
+                        lineTo(w / 2f, h / 2f + 18f)
+                        lineTo(w / 2f - 14f, h / 2f)
+                        close()
+                    }
+                    canvas.drawPath(crystal, paint)
+                }
+                RetroSystem.GBA -> {
+                    paint.color = Color.rgb(245, 150, 30)
+                    canvas.drawRoundRect(w / 2f - 20f, h * 0.58f, w / 2f + 20f, h * 0.68f, 5f, 5f, paint)
+                    paint.color = Color.DKGRAY
+                    canvas.drawRect(w / 2f - 14f, h * 0.65f, w / 2f - 7f, h * 0.70f, paint)
+                    canvas.drawRect(w / 2f + 7f, h * 0.65f, w / 2f + 14f, h * 0.70f, paint)
+                }
+                RetroSystem.NDS -> {
+                    paint.color = Color.RED
+                    canvas.drawCircle(w / 2f, h / 2f, 12f, paint)
+                    paint.color = Color.WHITE
+                    canvas.drawCircle(w / 2f, h / 2f, 4f, paint)
+                }
+                RetroSystem.N64 -> {
+                    paint.color = Color.rgb(180, 140, 220)
+                    paint.style = Paint.Style.STROKE
+                    val r = 22f
+                    val bossShape = Path().apply {
+                        moveTo(w / 2f, h / 2f - r)
+                        lineTo(w / 2f + r, h / 2f - 5f)
+                        lineTo(w / 2f + 13f, h / 2f + r)
+                        lineTo(w / 2f - 17f, h / 2f + r * 0.7f)
+                        lineTo(w / 2f - r, h / 2f - 7f)
+                        close()
+                    }
+                    canvas.drawPath(bossShape, paint)
+                    paint.style = Paint.Style.FILL
+                }
+            }
+        }
         paint.color = when (currentSystem) {
             RetroSystem.GB -> Color.rgb(15, 56, 15)
             RetroSystem.GBC -> Color.rgb(100, 220, 190)
