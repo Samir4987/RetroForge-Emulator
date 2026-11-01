@@ -59,16 +59,19 @@ abstract class FirestoreEmulatorTestBase {
       FirebaseApp.getInstance()
     }
 
-    // FirebaseApp can survive between Robolectric test classes. Configure the
-    // emulator endpoints on every setup path rather than only on first creation.
+    // Robolectric can retain the default FirebaseApp and its component singletons
+    // between test methods. Firestore rejects useEmulator()/settings changes after
+    // the first operation, so configure both SDK clients exactly once per test JVM.
     firestore = FirebaseFirestore.getInstance(app, databaseId)
-    firestore.useEmulator(EMULATOR_HOST, FIRESTORE_PORT)
-    firestore.firestoreSettings = FirebaseFirestoreSettings.Builder()
-      .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
-      .build()
-
     auth = FirebaseAuth.getInstance(app)
-    auth.useEmulator(EMULATOR_HOST, AUTH_PORT)
+    if (!emulatorsConfigured) {
+      firestore.useEmulator(EMULATOR_HOST, FIRESTORE_PORT)
+      firestore.firestoreSettings = FirebaseFirestoreSettings.Builder()
+        .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
+        .build()
+      auth.useEmulator(EMULATOR_HOST, AUTH_PORT)
+      emulatorsConfigured = true
+    }
   }
 
   @After
@@ -94,5 +97,6 @@ abstract class FirestoreEmulatorTestBase {
     const val PROJECT_ID = "demo-no-project"
     const val DEFAULT_PASSWORD = "password123"
     const val AUTH_TIMEOUT_MS = 5000L
+    private var emulatorsConfigured = false
   }
 }
