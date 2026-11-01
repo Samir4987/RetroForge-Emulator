@@ -1,88 +1,100 @@
-# Nintendo 3DS core integration decision
+# Nintendo 3DS integration: Azahar Libretro
 
-## Decision
+## Core decision
 
-Use **Azahar's official Libretro core target** as the Nintendo 3DS candidate for RetroForge, rather than trying to load Azahar's standalone Android app as if it were a shared library.
+RetroForge uses the official Azahar Libretro target, not the standalone Azahar Android application.
 
-Upstream evidence inspected on 2026-10-31:
+- Upstream: https://github.com/azahar-emu/azahar
+- Pinned revision: `01623d2fb707317410225c0eced82e3e0c84edc1`
+- Core output: `azahar_libretro.so`
+- Supported packaged ABI: `arm64-v8a`
+- Android NDK: `29.0.14206865`
+- Azahar CMake requirement: 3.25 or newer; the core build remains separate from the app's CMake configuration.
 
-- Repository: https://github.com/azahar-emu/azahar
-- Pinned research revision: `01623d2fb707317410225c0eced82e3e0c84edc1`
-- The upstream tree contains `src/citra_libretro/CMakeLists.txt`, which builds a shared target named `azahar_libretro` (output name `azahar_libretro`, no platform prefix).
-- That target implements the Libretro API and links Azahar's emulator, video, audio, and input components.
-- The upstream `.ci/libretro-ci.yml` includes an Android ARM64-v8a build job, sets Android NDK version `29.0.14206865`, and names the artifact `azahar_libretro.so`.
-- Upstream's Android app is a separate frontend under `src/android`; it is not itself the core library to pass to RetroForge's `dlopen` bridge.
+The pin and build approach follow the upstream Libretro Android CI configuration. The upstream Android app is not loaded as a Libretro shared object.
 
-## Why this is the selected route
+## Implemented in RetroForge
 
-Azahar is based on the Citra lineage and has a first-party Libretro implementation. This gives RetroForge a documented Libretro ABI boundary, matching the existing native loader more closely than embedding Azahar's full Android application and its UI. The Android ARM64 CI job is evidence that upstream builds this core for Android, but does not prove that RetroForge's own build or runtime is already compatible.
+### Build and binary validation
 
-## Current RetroForge integration status
+- `scripts/build-azahar-android.sh` fetches the pinned revision and recursively initializes submodules.
+- The Azahar core is built separately with Libretro enabled, Vulkan disabled, and GLES enabled.
+- The build verifies ELF64 and AArch64 headers and checks required Libretro dynamic exports.
+- The build writes a SHA-256 manifest, pinned source revision, and upstream GPL license into the CI artifact.
+- The Android app and Azahar core use the pinned NDK version and the shared C++ runtime.
+- The APK staging task verifies the binary hash and source revision, packages the core for ARM64, and includes the GPL license and revision metadata under `assets/licenses/azahar/`.
 
-The native frontend has moved beyond the original ROM-loader scaffold:
+### Android runtime
 
-- It captures Libretro CPU video frames and supports Azahar's GLES3 hardware-frame callback by reading the EGL pbuffer into XRGB8888.
-- It exposes frame dimensions, pitch, pixel format, and the core's negotiated AV geometry/timing to Kotlin.
-- It buffers interleaved stereo PCM16 audio for the Android layer to drain.
-- It accepts Libretro joypad buttons, both analog sticks, and pointer coordinates/press state.
-- The Kotlin runtime exposes those video, audio, AV-info, and input operations.
+- The Kotlin runtime loads `azahar_libretro.so` through the JNI Libretro frontend.
+- JNI supplies system, save, and content directories to the core and reads ROMs from a private cached file.
+- The frontend negotiates GLES3 and captures the hardware frame through an EGL pbuffer readback path.
+- Video metadata, pitch, pixel format, AV timing, and stereo PCM16 audio are transported to Kotlin.
+- The Compose emulator screen now starts the Azahar runtime for N3DS ROMs rather than using the demo renderer.
+- A vertically stacked dual-display frame is converted into separate top and bottom Android bitmaps.
+- Virtual D-pad, A/B/X/Y, Start/Select, L/R, Circle Pad axes, and bottom-screen pointer input are forwarded to Libretro.
+- PCM samples are sent to Android AudioTrack. Partial writes are retained in a bounded pending buffer.
+- App lifecycle pause/resume pauses native frame execution and audio output.
+- Save-state serialization and restore are exposed when the core exports all three Libretro serialization functions. The save-slot UI uses those APIs for N3DS rather than serializing the demo simulator.
+- The scanned ROM's persisted URI is carried into the game model so the selected ROM can be copied into app-private cache before native loading.
 
-Important remaining work:
+## Known limitations and validation still required
 
-- The GLES3/EGL pbuffer path is a first CPU-readback frontend, not a hardware-accelerated Android display surface. Its device compatibility and performance are unverified.
-- Android AudioTrack playback is not connected yet; the runtime currently only drains PCM samples.
-- The Compose UI does not yet split Azahar's default combined 400×480 frame into the top and bottom displays or forward on-screen controls/touch into the runtime.
-- Save serialization, persistent game-save directories, user-provided system-data configuration, and lifecycle recovery still need frontend work.
-- No successful APK packaging or physical-device gameplay test has been verified for this callback implementation.
+Implementation does not mean the system is fully supported yet.
 
-The Android Azahar build is configured to disable Vulkan and use GLES so the frontend can negotiate the implemented GLES3 path. A successful core build still does not prove gameplay. Keep Nintendo 3DS labelled **integration in progress**, and preserve demo mode for other systems and when the 3DS core is unavailable.
+1. **Physical-device gameplay is not verified.** Install the 3DS-enabled APK and test lawful homebrew on a real ARM64 Android device.
+2. **The GLES3/EGL path uses CPU readback.** It is a compatibility-oriented first frontend, not a zero-copy Android display surface. Measure frame pacing, heat, and memory use on devices.
+3. **System data/firmware is not bundled.** Users must supply any required system data or keys lawfully. The runtime provides app-private system/save directories, but a user-facing setup and diagnostics flow remains to be validated.
+4. **Save-state support is conditional.** It is exposed only when the core provides `retro_serialize_size`, `retro_serialize`, and `retro_unserialize`; round-trip testing against the pinned core is pending.
+5. **Physical gamepad mapping is not complete.** The on-screen controller and touch input are forwarded; Android hardware-controller key/axis mapping still needs implementation and device testing.
+6. **Packaging must be rerun against the latest verified Azahar artifact.** The manual workflow must produce an APK containing the core, `libc++_shared.so`, and the bundled license/revision assets.
+7. **Licensing review remains open.** Azahar declares GPL-3.0. Before distributing the APK, review combined-work obligations and provide required corresponding source and notices. Do not describe the resulting distribution as proprietary or license-free.
 
-## Reproducible build requirements to implement
+Nintendo 3DS must remain labelled **integration in progress** until the packaging, device, compatibility, lifecycle, and legal gates below pass. Other systems retain their existing demo behavior and are not replaced by the 3DS runtime.
 
-Use the pinned upstream revision above and recursively fetch its submodules. Follow upstream's Android Libretro CI configuration rather than guessing flags:
+## Reproducible build
 
-- Android ABI: initially `arm64-v8a` only, matching the upstream Android Libretro job.
-- Android NDK: `29.0.14206865`, matching the upstream CI definition.
-- CMake: upstream top-level project requires CMake `3.25` or newer; RetroForge's current app CMake version is `3.22.1`, so the 3DS core build must use a separate newer CMake installation without silently changing the app's CMake setting.
-- Configure with `-DENABLE_LIBRETRO=ON -DENABLE_TESTS=OFF`, as in upstream's Libretro CI template.
-- Expected shared library: `azahar_libretro.so` (confirm actual output path and packaging in the first CI build before wiring the runtime spec).
-- Preserve upstream source revision, submodule revisions, license notices, and corresponding source when distributing a binary.
+Build the core separately:
 
-Do not add the Azahar build to the main Android build until the standalone native build has passed. Build time and memory use may be substantial.
+```bash
+bash scripts/build-azahar-android.sh
+```
 
-## Licensing and user data
+The expected artifact directory is:
 
-Azahar's repository declares GPL-3.0. Before distributing an APK containing its core, review GPL-3.0 obligations for the combined distribution, provide required notices and corresponding source, and have the project's distribution approach reviewed appropriately. Do not imply that an APK containing the core is proprietary or license-free.
+```text
+.build/azahar-artifacts/arm64-v8a/
+  azahar_libretro.so
+  AZAHAR-LICENSE.txt
+  AZAHAR-REVISION.txt
+  AZAHAR-SHA256.txt
+```
 
-Do not bundle commercial game images, copyrighted console firmware, or keys. Any optional system data must be obtained and supplied lawfully by the user; document requirements without distributing those files.
-
-## Implemented in RetroForge\n\n- Added `RetroSystem.N3DS` metadata with dual-screen and analog-stick flags. The top-screen 400×240 dimensions are metadata only; the bottom-screen layout still needs frontend work.\n- Registered the pinned Azahar Libretro candidate as `azahar_libretro.so` for `.3ds`, `.cci`, and `.cxi` files. This is a candidate registration, not proof the binary is packaged or playable.\n- Added unit tests for system lookup, extension lookup, and dual-screen/input metadata.\n- Added `scripts/build-azahar-android.sh` and a separate, manually dispatchable / branch-scoped GitHub Actions workflow. The build script pins source and recursively updates submodules, then checks required Libretro exports before uploading the library with license and revision metadata.\n\n## APK packaging workflow
-
-The core is intentionally not committed to Git. The successful Azahar build run (`41200970352`) uploaded the `azahar-libretro-android-arm64` artifact, including the native library and license/revision metadata. To package it:
-
-1. Open the **Package Nintendo 3DS core into Android APK** workflow on `feature/n3ds-android-integration`.
-2. Run it manually and provide the successful Azahar build workflow run ID in `azahar_run_id`.
-3. The workflow downloads the artifact, checks the pinned revision and license files, runs `:app:stageAzaharCore :app:assembleDebug`, verifies that `lib/arm64-v8a/azahar_libretro.so` is inside the APK, and uploads `RetroForge-Android-APK-with-Azahar-3DS`.
-
-For local packaging, extract `azahar_libretro.so` to `.build/azahar-artifacts/arm64-v8a/azahar_libretro.so` and keep `AZAHAR-LICENSE.txt` plus `AZAHAR-REVISION.txt` beside it, then run:
+Package the core into the Android debug APK:
 
 ```bash
 ./gradlew :app:stageAzaharCore :app:assembleDebug
 ```
 
-The staging task copies the library into a generated `jniLibs/arm64-v8a` source directory. A normal APK build does not require the large Azahar binary; without explicitly staging it, the app remains in demo/fallback mode for 3DS.
+The normal APK build does not require the large Azahar binary. Without running the staging task and providing the verified artifact, N3DS reports that its core is unavailable; it must not silently fall back to a fake 3DS game.
+
+The manual GitHub Actions workflow **Package Nintendo 3DS core into Android APK** accepts the successful Azahar build run ID and verifies the artifact before staging it.
 
 ## Acceptance gates
 
-- [x] Build the pinned Azahar Libretro core for Android ARM64-v8a in CI (run `41200970352`, successful).
-- [x] Verify the produced shared object exports the required Libretro entry points in the build script.
-- [x] Add a dedicated workflow to download the verified core artifact, stage it, assemble the APK, and verify the ARM64 library entry (workflow added; packaging run still pending).
-- [x] Add a dedicated Nintendo 3DS system/core spec and unit tests without mapping unknown systems to 3DS.
-- [x] Add native video/audio/input callback transport, AV metadata, and an initial EGL/GLES3 hardware-frame readback path.
-- [ ] Connect PCM output to Android AudioTrack and render/split Azahar's combined dual-screen frame in Compose.
-- [ ] Forward virtual/physical controls and touchscreen input from Android UI to the native runtime.
-- [ ] Test legal homebrew content on a physical Android device.
-- [ ] Verify load failure, unload, pause/resume, repeated launch/close, and demo fallback.
-- [ ] Complete GPL-3.0 notices and source-distribution review.
+- [x] Select and pin the official Azahar Libretro core.
+- [x] Add a separate reproducible Android ARM64 core build.
+- [x] Add ELF architecture, required-export, source-revision, and SHA-256 checks to the core build.
+- [x] Add the N3DS system/core registration and extension tests.
+- [x] Implement JNI video, audio, input, AV-info, system/save/content directory, and optional save-state interfaces.
+- [x] Add Kotlin runtime, AudioTrack output, dual-display conversion, touch and virtual-controller forwarding.
+- [x] Connect N3DS ROM selection and runtime lifecycle to the emulator screen.
+- [x] Add APK staging for the core, matching C++ runtime, GPL license, and revision metadata.
+- [ ] Produce a successful APK from the latest artifact and inspect all packaged native libraries and license assets.
+- [ ] Install on a physical ARM64 Android device and boot lawful homebrew.
+- [ ] Verify both displays, touch, Circle Pad, buttons, audio, pause/resume, and repeated open/close.
+- [ ] Verify save-state save/restore round trips with the pinned Azahar core.
+- [ ] Verify performance, memory use, and compatibility across target devices.
+- [ ] Complete GPL-3.0 distribution and corresponding-source review.
 
-Until these gates pass, describe Nintendo 3DS as **planned/integration in progress**, not playable or fully supported.
+Do not mark Nintendo 3DS playable or fully supported until the unchecked acceptance gates have passed.
