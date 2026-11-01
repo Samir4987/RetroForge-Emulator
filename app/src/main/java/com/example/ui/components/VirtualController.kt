@@ -125,9 +125,9 @@ fun VirtualController(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (rewindEnabled) {
-                    // Rewind Hold Button
-                    var isRewindHeld by remember { mutableStateOf(false) }
-                    Surface(
+                        // Rewind Hold Button
+                        var isRewindHeld by remember { mutableStateOf(false) }
+                        Surface(
                         modifier = Modifier
                             .testTag("button_rewind")
                             .height(34.dp)

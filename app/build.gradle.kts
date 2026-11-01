@@ -160,8 +160,8 @@ val azaharSha256Input = azaharArtifactDir.resolve("AZAHAR-SHA256.txt")
 val azaharJniLibsDir = layout.buildDirectory.dir("generated/azaharJniLibs").get().asFile
 val azaharAssetsDir = layout.buildDirectory.dir("generated/azaharAssets").get().asFile
 
-android.sourceSets.getByName("main").jniLibs.directories.add(azaharJniLibsDir)
-android.sourceSets.getByName("main").assets.directories.add(azaharAssetsDir)
+android.sourceSets.getByName("main").jniLibs.directories.add(azaharJniLibsDir.absolutePath)
+android.sourceSets.getByName("main").assets.directories.add(azaharAssetsDir.absolutePath)
 
 tasks.register<Copy>("stageAzaharLicense") {
     from(azaharLicenseInput)

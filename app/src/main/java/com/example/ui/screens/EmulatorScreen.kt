@@ -355,13 +355,13 @@ fun EmulatorScreen(
                         // Pause Toggle
                         IconButton(
                             onClick = {
-                emulatorCore.isPaused = !emulatorCore.isPaused
-                if (emulatorCore.isPaused) {
-                    n3dsAudioOutput?.pause()
-                } else if (!n3dsLifecyclePaused) {
-                    n3dsAudioOutput?.resume()
-                }
-            },
+                                emulatorCore.isPaused = !emulatorCore.isPaused
+                                if (emulatorCore.isPaused) {
+                                    n3dsAudioOutput?.pause()
+                                } else if (!n3dsLifecyclePaused) {
+                                    n3dsAudioOutput?.resume()
+                                }
+                            },
                             modifier = Modifier.testTag("button_pause_toggle")
                         ) {
                             Icon(
