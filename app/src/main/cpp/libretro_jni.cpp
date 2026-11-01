@@ -1,4 +1,7 @@
 #include <jni.h>
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <GLES3/gl3.h>
 #include <android/log.h>
 #include <dlfcn.h>
 #include <algorithm>
@@ -26,6 +29,30 @@ struct GameInfo { const char* path; const void* data; size_t size; const char* m
 struct SystemInfo { const char* name; const char* version; const char* extensions; bool need_fullpath; bool block_extract; };
 struct AvInfo { unsigned base_width, base_height, max_width, max_height; float aspect_ratio; double fps, sample_rate; };
 struct PixelFormat { unsigned format; };
+
+using HwContextCallback = void (*)();
+using HwFramebufferCallback = uintptr_t (*)();
+using HwProcAddressCallback = void* (*)(const char*);
+struct HwRenderCallback {
+    unsigned context_type;
+    HwContextCallback context_reset;
+    HwFramebufferCallback get_current_framebuffer;
+    HwProcAddressCallback get_proc_address;
+    bool depth;
+    bool stencil;
+    bool bottom_left_origin;
+    unsigned version_major;
+    unsigned version_minor;
+    bool cache_context;
+    HwContextCallback context_destroy;
+    bool debug_context;
+};
+constexpr unsigned kSetHwRender = 14;
+constexpr unsigned kSetHwSharedContext = 44 | 0x10000;
+constexpr unsigned kGetPreferredHwRender = 56;
+constexpr unsigned kHwContextOpenGles3 = 4;
+constexpr unsigned kGlSurfaceSize = 2048;
+
 
 constexpr size_t kMaxAudioSamples = 32768;
 constexpr unsigned kJoypadDevice = 1;
