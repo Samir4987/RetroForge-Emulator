@@ -33,7 +33,9 @@ class LibretroVideoConverterTest {
 
     @Test
     fun convertsRgb565Pixels() {
-        val bytes = ByteBuffer.allocateDirect(4).order(ByteOrder.LITTLE_ENDIAN)
+        val bytes = ByteBuffer.allocateDirect(8).order(ByteOrder.LITTLE_ENDIAN)
+            .putShort(0xF800.toShort())
+            .putShort(0x07E0.toShort())
             .putShort(0xF800.toShort())
             .putShort(0x07E0.toShort())
         bytes.position(0)
