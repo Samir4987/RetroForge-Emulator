@@ -149,4 +149,35 @@ class RomHeaderScannerTest {
         assertEquals("SIGNATURE-OK", result.headerChecksum)
     }
 
+    @Test
+    fun parseN3ds3dsxHeaderRecognizesHomebrewExecutable() {
+        val bytes = ByteArray(1024)
+        System.arraycopy("3DSX".toByteArray(StandardCharsets.US_ASCII), 0, bytes, 0, 4)
+
+        val result = RomHeaderScanner.parseHeader(bytes, "3dsx", "Homebrew.3dsx")
+
+        assertEquals(RetroSystem.N3DS, result.system)
+        assertEquals("3DS-3DSX", result.gameCode)
+        assertEquals("SIGNATURE-OK", result.headerChecksum)
+    }
+
+    @Test
+    fun parseN3dsElfHeaderRecognizesExecutable() {
+        val bytes = byteArrayOf(0x7F, 'E'.code.toByte(), 'L'.code.toByte(), 'F'.code.toByte()) + ByteArray(1020)
+
+        val result = RomHeaderScanner.parseHeader(bytes, "elf", "Homebrew.elf")
+
+        assertEquals(RetroSystem.N3DS, result.system)
+        assertEquals("3DS-ELF", result.gameCode)
+        assertEquals("SIGNATURE-OK", result.headerChecksum)
+    }
+
+    @Test
+    fun allDocumentedAzaharExtensionsResolveToNintendo3ds() {
+        val extensions = listOf("3ds", "3dsx", "z3dsx", "elf", "axf", "cci", "zcci", "cxi", "zcxi", "app")
+        extensions.forEach { extension ->
+            assertEquals(extension, RetroSystem.N3DS, RetroSystem.fromExtension(extension))
+        }
+    }
+
 }

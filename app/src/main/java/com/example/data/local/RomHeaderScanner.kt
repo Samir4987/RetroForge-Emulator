@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.example.emulator.RetroSystem
-import java.io.InputStream
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 
@@ -39,10 +38,17 @@ object RomHeaderScanner {
                 }
             }
 
-            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
             val headerBytes = ByteArray(1024)
-            val bytesRead = inputStream.read(headerBytes)
-            inputStream.close()
+            val bytesRead = context.contentResolver.openInputStream(uri)?.use { input ->
+                var totalRead = 0
+                while (totalRead < headerBytes.size) {
+                    val count = input.read(headerBytes, totalRead, headerBytes.size - totalRead)
+                    if (count < 0) break
+                    if (count == 0) continue
+                    totalRead += count
+                }
+                totalRead
+            } ?: return null
 
             if (bytesRead < 64) return null
             if (fileSize <= 0) fileSize = bytesRead.toLong()
@@ -50,7 +56,7 @@ object RomHeaderScanner {
             val ext = fileName.substringAfterLast('.', "").lowercase()
             val result = parseHeader(headerBytes, ext, fileName)
 
-            val id = "rom_${UUID.nameUUIDFromBytes((fileName + fileSize).toByteArray())}"
+            val id = "rom_${UUID.nameUUIDFromBytes((uri.toString() + fileName + fileSize).toByteArray())}"
 
             ScannedRomEntity(
                 id = id,
@@ -82,7 +88,8 @@ object RomHeaderScanner {
             "gb", "gbc" -> parseGbGbcHeader(bytes, extension, fileName)
             "gba" -> parseGbaHeader(bytes, fileName)
             "nds", "ds" -> parseNdsHeader(bytes, fileName)
-            "3ds", "cci", "cxi" -> parseN3dsHeader(bytes, extension, fileName)
+            "3ds", "3dsx", "z3dsx", "elf", "axf", "cci", "zcci", "cxi", "zcxi", "app" ->
+                parseN3dsHeader(bytes, extension, fileName)
             "n64", "z64", "v64" -> parseN64Header(bytes, extension, fileName)
             else -> {
                 // Infer from header signature or file name
@@ -214,25 +221,50 @@ object RomHeaderScanner {
     }
 
     private fun parseN3dsHeader(bytes: ByteArray, ext: String, fileName: String): ScanResult {
-        val signature = if (bytes.size >= 0x104) {
-            String(bytes, 0x100, 4, StandardCharsets.US_ASCII)
-        } else {
-            ""
-        }
-        val expectedSignature = if (ext == "cxi") "NCCH" else "NCSD"
         val title = cleanTitle(fileName.substringBeforeLast('.'))
         val (genre, icon) = inferGenre(title)
-        val validHeader = signature == expectedSignature
+        val expectedSignature = when (ext) {
+            "3ds", "cci", "zcci" -> "NCSD"
+            "cxi", "zcxi", "app" -> "NCCH"
+            "3dsx", "z3dsx" -> "3DSX"
+            "elf", "axf" -> "ELF"
+            else -> ""
+        }
+        val actualSignature = when (expectedSignature) {
+            "NCSD", "NCCH" -> if (bytes.size >= 0x104) {
+                String(bytes, 0x100, 4, StandardCharsets.US_ASCII)
+            } else ""
+            "3DSX" -> if (bytes.size >= 4) String(bytes, 0, 4, StandardCharsets.US_ASCII) else ""
+            "ELF" -> if (bytes.size >= 4 &&
+                bytes[0] == 0x7F.toByte() &&
+                bytes[1] == 'E'.code.toByte() &&
+                bytes[2] == 'L'.code.toByte() &&
+                bytes[3] == 'F'.code.toByte()
+            ) "ELF" else ""
+            else -> ""
+        }
+        val validHeader = expectedSignature.isNotEmpty() && actualSignature == expectedSignature
+        val compressedContainer = ext in setOf("z3dsx", "zcci", "zcxi")
 
         return ScanResult(
             title = title,
             system = RetroSystem.N3DS,
-            gameCode = if (validHeader) "3DS-$signature" else "3DS-UNVERIFIED",
+            gameCode = if (validHeader) "3DS-$actualSignature" else "3DS-UNVERIFIED",
             publisher = "Nintendo 3DS",
             genre = genre,
             releaseYear = "2011",
-            cartridgeMapper = if (validHeader) "$signature container" else "3DS ROM (header unverified)",
-            headerChecksum = if (validHeader) "SIGNATURE-OK" else "SIGNATURE-MISSING",
+            cartridgeMapper = when {
+                validHeader && actualSignature in setOf("NCSD", "NCCH") -> "$actualSignature container"
+                validHeader -> "$actualSignature executable"
+                compressedContainer -> "Compressed 3DS content (header not inspected)"
+                expectedSignature.isEmpty() -> "3DS content"
+                else -> "3DS content (header unverified)"
+            },
+            headerChecksum = when {
+                validHeader -> "SIGNATURE-OK"
+                compressedContainer -> "SIGNATURE-N/A"
+                else -> "SIGNATURE-MISSING"
+            },
             boxArtCoverKey = "cover_n3ds",
             boxArtPrimaryColor = 0xFF6C3483,
             boxArtSecondaryColor = 0xFF273746,

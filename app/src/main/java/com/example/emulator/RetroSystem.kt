@@ -70,7 +70,7 @@ enum class RetroSystem(
         defaultAspect = 400f / 240f,
         isDualScreen = true,
         hasAnalogStick = true,
-        supportedExtensions = listOf("3ds", "cci", "cxi")
+        supportedExtensions = listOf("3ds", "3dsx", "z3dsx", "elf", "axf", "cci", "zcci", "cxi", "zcxi", "app")
     ),
     N64(
         code = "N64",

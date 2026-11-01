@@ -44,7 +44,7 @@ data class LibretroCoreSpec(
                 system = RetroSystem.N3DS,
                 libraryFileName = "azahar_libretro.so",
                 upstreamUrl = "https://github.com/azahar-emu/azahar",
-                extensions = setOf("3ds", "cci", "cxi")
+                extensions = setOf("3ds", "3dsx", "z3dsx", "elf", "axf", "cci", "zcci", "cxi", "zcxi", "app")
             ),
             LibretroCoreSpec(
                 system = RetroSystem.N64,

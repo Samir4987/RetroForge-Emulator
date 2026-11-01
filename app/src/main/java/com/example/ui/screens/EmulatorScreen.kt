@@ -152,7 +152,7 @@ fun EmulatorScreen(
                 val romFile = withContext(Dispatchers.IO) {
                     val extension = game.romFileName?.substringAfterLast('.', "")?.lowercase()
                         ?: throw IllegalArgumentException("Nintendo 3DS ROM filename is missing.")
-                    require(extension in setOf("3ds", "cci", "cxi")) {
+                    require(extension in setOf("3ds", "3dsx", "z3dsx", "elf", "axf", "cci", "zcci", "cxi", "zcxi", "app")) {
                         "Unsupported Nintendo 3DS ROM extension: .$extension"
                     }
                     val safeId = game.id.replace(Regex("[^A-Za-z0-9_-]"), "_")
