@@ -375,7 +375,8 @@ fun EmulatorScreen(
                         // Quick Save Slot 0 Button
                         IconButton(
                             onClick = {
-                                saveStateToSlot(
+                                coroutineScope.launch {
+                                    saveStateToSlot(
                                     slot = 0,
                                     game = game,
                                     emulatorCore = emulatorCore,
@@ -389,7 +390,8 @@ fun EmulatorScreen(
                                     onSaved = {
                                         Toast.makeText(context, "Quick Saved to Slot 1", Toast.LENGTH_SHORT).show()
                                     }
-                                )
+                                    )
+                                }
                             },
                             modifier = Modifier.testTag("button_quick_save")
                         ) {
@@ -524,7 +526,8 @@ fun EmulatorScreen(
                 systemName = game.system,
                 existingSaves = saveStates,
                 onSaveToSlot = { slot ->
-                    saveStateToSlot(
+                    coroutineScope.launch {
+                        saveStateToSlot(
                         slot = slot,
                         game = game,
                         emulatorCore = emulatorCore,
@@ -538,19 +541,24 @@ fun EmulatorScreen(
                         onSaved = {
                             Toast.makeText(context, "State saved to Slot ${slot + 1}", Toast.LENGTH_SHORT).show()
                         }
-                    )
+                        )
+                    }
                 },
                 onLoadFromSlot = { dto ->
-                    val success = if (isNintendo3ds) {
-                        n3dsRuntime?.loadStateBase64(dto.stateData)?.isSuccess == true
-                    } else {
-                        emulatorCore.loadSaveStateBase64(dto.stateData)
-                    }
-                    if (success) {
-                        Toast.makeText(context, "Loaded Slot ${dto.slot + 1}", Toast.LENGTH_SHORT).show()
-                        showSlotDialog = false
-                    } else {
-                        Toast.makeText(context, "Failed to load state", Toast.LENGTH_SHORT).show()
+                    coroutineScope.launch {
+                        val success = if (isNintendo3ds) {
+                            withContext(Dispatchers.IO) {
+                                n3dsRuntime?.loadStateBase64(dto.stateData)?.isSuccess == true
+                            }
+                        } else {
+                            emulatorCore.loadSaveStateBase64(dto.stateData)
+                        }
+                        if (success) {
+                            Toast.makeText(context, "Loaded Slot ${dto.slot + 1}", Toast.LENGTH_SHORT).show()
+                            showSlotDialog = false
+                        } else {
+                            Toast.makeText(context, "Failed to load state", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 },
                 onDeleteSlot = { saveId ->
@@ -599,7 +607,7 @@ private fun bitmapToBase64(bitmap: Bitmap): String {
     return Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
 }
 
-private fun saveStateToSlot(
+private suspend fun saveStateToSlot(
     slot: Long,
     game: RetroGame,
     emulatorCore: EmulatorCore,
@@ -611,7 +619,7 @@ private fun saveStateToSlot(
     onSaved: () -> Unit
 ) {
     val stateBase64 = if (emulatorCore.currentSystem == com.example.emulator.RetroSystem.N3DS) {
-        val result = libretroRuntime?.serializeStateBase64()
+        val result = withContext(Dispatchers.IO) { libretroRuntime?.serializeStateBase64() }
         result?.getOrElse {
             onSaveFailed(it.message ?: "The Nintendo 3DS core could not serialize a save state.")
             return
@@ -620,10 +628,13 @@ private fun saveStateToSlot(
             return
         }
     } else {
-        emulatorCore.exportSaveStateBase64()
+        withContext(Dispatchers.IO) { emulatorCore.exportSaveStateBase64() }
     }
-    val thumbnail = thumbnailBitmap?.let(::bitmapToBase64)
-        ?: emulatorCore.generateThumbnailBase64()
+    val thumbnail = if (thumbnailBitmap != null) {
+        withContext(Dispatchers.Default) { bitmapToBase64(thumbnailBitmap) }
+    } else {
+        emulatorCore.generateThumbnailBase64()
+    }
     val uid = Firebase.auth.currentUser?.uid ?: "local_user"
     val docId = "${game.id}_slot_$slot"
 
