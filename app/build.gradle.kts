@@ -1,5 +1,6 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 import java.time.Duration
+import java.security.MessageDigest
 
 plugins {
     alias(libs.plugins.android.application)
@@ -159,8 +160,8 @@ val azaharSha256Input = azaharArtifactDir.resolve("AZAHAR-SHA256.txt")
 val azaharJniLibsDir = layout.buildDirectory.dir("generated/azaharJniLibs").get().asFile
 val azaharAssetsDir = layout.buildDirectory.dir("generated/azaharAssets").get().asFile
 
-android.sourceSets.getByName("main").jniLibs.srcDir(azaharJniLibsDir)
-android.sourceSets.getByName("main").assets.srcDir(azaharAssetsDir)
+android.sourceSets.getByName("main").jniLibs.directories.add(azaharJniLibsDir)
+android.sourceSets.getByName("main").assets.directories.add(azaharAssetsDir)
 
 tasks.register<Copy>("stageAzaharLicense") {
     from(azaharLicenseInput)
@@ -181,9 +182,9 @@ tasks.register<Copy>("stageAzaharLicense") {
             "Azahar SHA-256 manifest is missing."
         }
         val expectedHash = azaharSha256Input.readText().trim()
-        val actualHash = java.security.MessageDigest.getInstance("SHA-256")
+        val actualHash = MessageDigest.getInstance("SHA-256")
             .digest(azaharCoreInput.readBytes())
-            .joinToString("") { "%02x".format(it) }
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
         require(expectedHash == actualHash) { "Azahar core SHA-256 verification failed." }
     }
 }
