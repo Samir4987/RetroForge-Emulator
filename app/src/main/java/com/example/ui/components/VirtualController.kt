@@ -43,9 +43,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -239,19 +241,29 @@ fun VirtualController(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         VirtualAnalogStick(
                             skin = skin,
+                            sizeDp = if (system == RetroSystem.N3DS) 100.dp else 120.dp,
                             onStickMove = { sx, sy ->
                                 inputState.stickX = sx
                                 inputState.stickY = sy
                             }
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "3D STICK",
+                            text = if (system == RetroSystem.N3DS) "CIRCLE PAD" else "3D STICK",
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             color = skin.textColor.copy(alpha = 0.7f),
                             fontFamily = FontFamily.Monospace
                         )
+                        if (system == RetroSystem.N3DS) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            VirtualDPad(
+                                skin = skin,
+                                inputState = inputState,
+                                onHaptic = { triggerHaptic() },
+                                sizeDp = 84.dp
+                            )
+                        }
                     }
                 } else {
                     VirtualDPad(
@@ -486,11 +498,12 @@ fun VirtualController(
 private fun VirtualDPad(
     skin: ControllerSkin,
     inputState: EmulatorInputState,
-    onHaptic: () -> Unit
+    onHaptic: () -> Unit,
+    sizeDp: Dp = 136.dp
 ) {
     Box(
         modifier = Modifier
-            .size(136.dp)
+            .size(sizeDp)
             .testTag("dpad_controller")
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -500,7 +513,7 @@ private fun VirtualDPad(
                         val dx = offset.x - cx
                         val dy = offset.y - cy
                         val dist = hypot(dx, dy)
-                        if (dist > 14f && dist < cx) {
+                        if (dist > size.width * 0.1f && dist < cx) {
                             val angle = (Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())) + 360) % 360
                             // 8-way directional parsing
                             inputState.dpadRight = angle in 337.5..360.0 || angle in 0.0..22.5 || angle in 22.5..67.5 || angle in 292.5..337.5
@@ -525,7 +538,7 @@ private fun VirtualDPad(
                         val dx = offset.x - cx
                         val dy = offset.y - cy
                         val dist = hypot(dx, dy)
-                        if (dist > 14f) {
+                        if (dist > size.width * 0.1f) {
                             val angle = (Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())) + 360) % 360
                             inputState.dpadRight = angle in 337.5..360.0 || angle in 0.0..22.5 || angle in 22.5..67.5 || angle in 292.5..337.5
                             inputState.dpadDown = angle in 22.5..157.5
@@ -565,9 +578,9 @@ private fun VirtualDPad(
         contentAlignment = Alignment.Center
     ) {
         // Cross background
-        Canvas(modifier = Modifier.size(136.dp)) {
-            val armWidth = 44.dp.toPx()
-            val totalSize = 136.dp.toPx()
+        Canvas(modifier = Modifier.size(sizeDp)) {
+            val armWidth = (sizeDp * 0.32f).toPx()
+            val totalSize = sizeDp.toPx()
             val inset = (totalSize - armWidth) / 2f
 
             // Horizontal arm
@@ -588,30 +601,33 @@ private fun VirtualDPad(
             // Center pivot concave indent
             drawCircle(
                 color = Color.Black.copy(alpha = 0.28f),
-                radius = 16.dp.toPx(),
+                radius = (sizeDp * 0.12f).toPx(),
                 center = center
             )
         }
 
         // Direction Arrows
-        Text("▲", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp, modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
-        Text("▼", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp))
-        Text("◀", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp, modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp))
-        Text("▶", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp))
+        val arrowSize = if (sizeDp < 100.dp) 9.sp else 14.sp
+        val arrowPadding = sizeDp * 0.06f
+        Text("▲", color = Color.White.copy(alpha = 0.6f), fontSize = arrowSize, modifier = Modifier.align(Alignment.TopCenter).padding(top = arrowPadding))
+        Text("▼", color = Color.White.copy(alpha = 0.6f), fontSize = arrowSize, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = arrowPadding))
+        Text("◀", color = Color.White.copy(alpha = 0.6f), fontSize = arrowSize, modifier = Modifier.align(Alignment.CenterStart).padding(start = arrowPadding))
+        Text("▶", color = Color.White.copy(alpha = 0.6f), fontSize = arrowSize, modifier = Modifier.align(Alignment.CenterEnd).padding(end = arrowPadding))
     }
 }
 
 @Composable
 private fun VirtualAnalogStick(
     skin: ControllerSkin,
+    sizeDp: Dp = 120.dp,
     onStickMove: (Float, Float) -> Unit
 ) {
     var thumbOffset by remember { mutableStateOf(Offset.Zero) }
-    val maxRadius = 40f
+    val maxRadius = with(LocalDensity.current) { sizeDp.toPx() * 0.34f }
 
     Box(
         modifier = Modifier
-            .size(120.dp)
+            .size(sizeDp)
             .testTag("analog_joystick")
             .background(Color(0xFF22232B), CircleShape)
             .border(2.dp, skin.bezelColor, CircleShape)
@@ -658,7 +674,7 @@ private fun VirtualAnalogStick(
         // Analog Base Well
         Box(
             modifier = Modifier
-                .size(76.dp)
+                .size(sizeDp * 0.63f)
                 .background(Color(0xFF16171D), CircleShape)
         )
 
@@ -666,7 +682,7 @@ private fun VirtualAnalogStick(
         Box(
             modifier = Modifier
                 .offset { IntOffset(thumbOffset.x.roundToInt(), thumbOffset.y.roundToInt()) }
-                .size(54.dp)
+                .size(sizeDp * 0.45f)
                 .shadow(6.dp, CircleShape)
                 .background(
                     Brush.radialGradient(
