@@ -82,6 +82,7 @@ object RomHeaderScanner {
             "gb", "gbc" -> parseGbGbcHeader(bytes, extension, fileName)
             "gba" -> parseGbaHeader(bytes, fileName)
             "nds", "ds" -> parseNdsHeader(bytes, fileName)
+            "3ds", "cci", "cxi" -> parseN3dsHeader(bytes, extension, fileName)
             "n64", "z64", "v64" -> parseN64Header(bytes, extension, fileName)
             else -> {
                 // Infer from header signature or file name
@@ -212,6 +213,33 @@ object RomHeaderScanner {
         )
     }
 
+    private fun parseN3dsHeader(bytes: ByteArray, ext: String, fileName: String): ScanResult {
+        val signature = if (bytes.size >= 0x104) {
+            String(bytes, 0x100, 4, StandardCharsets.US_ASCII)
+        } else {
+            ""
+        }
+        val expectedSignature = if (ext == "cxi") "NCCH" else "NCSD"
+        val title = cleanTitle(fileName.substringBeforeLast('.'))
+        val (genre, icon) = inferGenre(title)
+        val validHeader = signature == expectedSignature
+
+        return ScanResult(
+            title = title,
+            system = RetroSystem.N3DS,
+            gameCode = if (validHeader) "3DS-$signature" else "3DS-UNVERIFIED",
+            publisher = "Nintendo 3DS",
+            genre = genre,
+            releaseYear = "2011",
+            cartridgeMapper = if (validHeader) "$signature container" else "3DS ROM (header unverified)",
+            headerChecksum = if (validHeader) "SIGNATURE-OK" else "SIGNATURE-MISSING",
+            boxArtCoverKey = "cover_n3ds",
+            boxArtPrimaryColor = 0xFF6C3483,
+            boxArtSecondaryColor = 0xFF273746,
+            iconEmoji = icon
+        )
+    }
+
     private fun parseN64Header(bytes: ByteArray, ext: String, fileName: String): ScanResult {
         if (bytes.size < 0x40) return fallbackResult(fileName, ext)
 
@@ -279,6 +307,7 @@ object RomHeaderScanner {
             RetroSystem.GBC -> Pair(0xFF8E44AD, 0xFF2C3E50)
             RetroSystem.GBA -> Pair(0xFF2980B9, 0xFF1A5276)
             RetroSystem.NDS -> Pair(0xFF16A085, 0xFF117A65)
+            RetroSystem.N3DS -> Pair(0xFF6C3483, 0xFF273746)
             RetroSystem.N64 -> Pair(0xFFD35400, 0xFF962D00)
         }
 
