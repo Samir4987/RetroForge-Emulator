@@ -124,7 +124,7 @@ class EmulatorCore(
     }
 
     fun tick() {
-        if (isPaused) return
+        if (isPaused || !::campaign.isInitialized) return
 
         if (isRewinding) {
             val pastFrame = rewindBuffer.pop()
@@ -713,6 +713,18 @@ class EmulatorCore(
                     }
                     canvas.drawPath(bossShape, paint)
                     paint.style = Paint.Style.FILL
+                }
+            }
+        }
+        if (!view.bossActive && currentSystem == RetroSystem.GB) {
+            val sentries = listOf(36f to 36f, 120f to 44f, 80f to 108f, 40f to 104f, 120f to 104f)
+            paint.color = Color.rgb(48, 98, 48)
+            sentries.forEachIndexed { index, point ->
+                if (index < view.objectiveGoal && index !in defeatedDungeonSentries) {
+                    canvas.drawRect(point.first - 5f, point.second - 5f, point.first + 5f, point.second + 5f, paint)
+                    paint.color = Color.rgb(15, 56, 15)
+                    canvas.drawRect(point.first - 2f, point.second - 2f, point.first + 2f, point.second, paint)
+                    paint.color = Color.rgb(48, 98, 48)
                 }
             }
         }
