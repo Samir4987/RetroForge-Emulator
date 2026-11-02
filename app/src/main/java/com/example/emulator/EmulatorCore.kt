@@ -10,7 +10,6 @@ import com.example.data.model.RetroGame
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import kotlin.math.cos
-import kotlin.math.max
 import kotlin.math.sin
 
 class EmulatorCore(
