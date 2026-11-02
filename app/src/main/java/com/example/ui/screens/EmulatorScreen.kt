@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.io.File
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -85,6 +88,7 @@ fun EmulatorScreen(
     onBackToLibrary: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
 
     var activeSkin by remember { mutableStateOf(initialSkin) }
@@ -105,6 +109,29 @@ fun EmulatorScreen(
             ndsRuntime?.close()
             ndsRuntime = null
         }
+    }
+
+    DisposableEffect(lifecycleOwner, game.id) {
+        var resumeAfterStop = false
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    resumeAfterStop = !emulatorCore.isPaused
+                    emulatorCore.isPaused = true
+                    ndsRuntime?.pauseAudio()
+                }
+                Lifecycle.Event.ON_START -> {
+                    if (resumeAfterStop) {
+                        emulatorCore.isPaused = false
+                        ndsRuntime?.resumeAudio()
+                    }
+                    resumeAfterStop = false
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Intercept back button to return safely to Library
