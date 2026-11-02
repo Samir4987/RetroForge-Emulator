@@ -370,11 +370,30 @@ void reset_symbols() {
 }
 
 void close_core() {
+    // Libretro hardware-rendering cores may release GL objects from
+    // retro_unload_game()/retro_deinit(). Each frame deliberately detaches
+    // the pbuffer context before returning to Android, so rebind it here
+    // before invoking any core lifecycle callback.
+    const bool has_hardware_context =
+        hardware_rendering && egl_display != EGL_NO_DISPLAY &&
+        egl_context != EGL_NO_CONTEXT && egl_surface != EGL_NO_SURFACE;
+    const bool context_is_current = has_hardware_context && make_egl_current();
+
     if (game_loaded && unload_game) unload_game();
     game_loaded = false;
     if (initialized && core_deinit) core_deinit();
     initialized = false;
-    if (hardware_rendering) destroy_egl_context();
+
+    // If EGL rebinding failed, still tear down native resources safely; the
+    // context-destroy callback is only meaningful while a context is current.
+    if (hardware_rendering) {
+        if (context_is_current) {
+            destroy_egl_context();
+        } else {
+            hw_callback.context_destroy = nullptr;
+            destroy_egl_context();
+        }
+    }
     if (core) dlclose(core);
     core = nullptr;
     rom_data.clear();
