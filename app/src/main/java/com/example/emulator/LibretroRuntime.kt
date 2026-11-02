@@ -52,6 +52,7 @@ class LibretroRuntime(
     enum class State { UNAVAILABLE, READY, GAME_LOADED, CLOSED }
 
     private var native: LibretroNative? = null
+    private var audioOutput: LibretroAudioOutput? = null
     private val coreFile: File
         get() = File(frontendLibrary.parentFile, coreSpec.libraryFileName)
 
@@ -89,13 +90,19 @@ class LibretroRuntime(
 
         return runCatching {
             val bridge = native ?: LibretroNative().also { native = it }
+            audioOutput?.close()
+            audioOutput = null
             try {
                 val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
                 if (error != null) throw IllegalStateException(error)
                 state = State.GAME_LOADED
+                val sampleRate = bridge.nativeGetAudioSampleRate().toInt().coerceIn(8_000, 192_000)
+                audioOutput = runCatching { LibretroAudioOutput(sampleRate) }.getOrNull()
             } catch (failure: Throwable) {
                 // nativeOpen closes any previously loaded core before attempting a new load.
                 // Keep Kotlin state in sync if the replacement ROM fails to load.
+                audioOutput?.close()
+                audioOutput = null
                 runCatching { bridge.nativeClose() }
                 native = null
                 state = if (frontendLibrary.isFile && coreFile.isFile) {
@@ -148,10 +155,14 @@ class LibretroRuntime(
     /** Advances one core frame and captures video through the registered Libretro callback. */
     fun runFrame(): Result<Unit> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before running frames." }
-        check(native?.nativeRunFrame() == true) { "Native Libretro core is not running." }
+        val bridge = checkNotNull(native)
+        check(bridge.nativeRunFrame()) { "Native Libretro core is not running." }
+        bridge.nativeReadAudioSamples(4_096)?.let { audioOutput?.write(it) }
     }
 
     fun close() {
+        audioOutput?.close()
+        audioOutput = null
         native?.nativeClose()
         native = null
         state = State.CLOSED
