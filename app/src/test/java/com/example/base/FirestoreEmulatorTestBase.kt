@@ -21,7 +21,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 
 @RunWith(RobolectricTestRunner::class)
-@Config(manifest = Config.NONE)
+@Config(sdk = [35], manifest = Config.NONE)
 @LooperMode(LooperMode.Mode.INSTRUMENTATION_TEST)
 abstract class FirestoreEmulatorTestBase {
 
