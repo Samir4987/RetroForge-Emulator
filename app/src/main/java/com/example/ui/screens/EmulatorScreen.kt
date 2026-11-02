@@ -207,38 +207,48 @@ fun EmulatorScreen(
     var frameTicker by remember { mutableStateOf(0L) }
     LaunchedEffect(ndsRuntime) {
         var nextFrameDeadlineNs = System.nanoTime()
+        var frameAccumulator = 0.0
         while (true) {
+            val runtime = ndsRuntime
             if (emulatorCore.isPaused) {
-                ndsRuntime?.setPaused(true)
-            } else {
-                val runtime = ndsRuntime
-                if (runtime != null) {
-                    runtime.setPaused(false)
-                    val inputSnapshot = emulatorCore.inputState.copy()
-                    val result = withContext(Dispatchers.Default) { runtime.runFrame(inputSnapshot) }
-                    if (result.isFailure) {
-                        ndsStatus = result.exceptionOrNull()?.message ?: "Nintendo DS emulation stopped."
-                        runtime.close()
-                        ndsRuntime = null
+                runtime?.setPaused(true)
+            } else if (runtime != null) {
+                runtime.setPaused(false)
+                val speed = emulatorCore.fastForwardMultiplier.toDouble().coerceIn(1.0, 1000.0)
+                // Batch core frames at the native rate while refreshing Compose at ~60 Hz.
+                // Fractional speed values (for example 1.5x) are accumulated without drift.
+                frameAccumulator += speed
+                val steps = frameAccumulator.toInt().coerceAtLeast(1)
+                frameAccumulator -= steps
+                val inputSnapshot = emulatorCore.inputState.copy()
+                val result = withContext(Dispatchers.Default) {
+                    runCatching {
+                        repeat(steps) {
+                            if (emulatorCore.isPaused) return@runCatching
+                            runtime.runFrame(inputSnapshot).getOrThrow()
+                        }
                     }
-                } else {
-                    emulatorCore.tick()
                 }
+                if (result.isFailure) {
+                    ndsStatus = result.exceptionOrNull()?.message ?: "Nintendo DS emulation stopped."
+                    runtime.close()
+                    ndsRuntime = null
+                }
+            } else {
+                // Legacy/demo systems already apply fast-forward steps inside tick().
+                emulatorCore.tick()
             }
             frameTicker = emulatorCore.frameCounter
 
-            // Pace against the core's AV timing instead of assuming every system is 62.5 FPS.
-            // Fractional deadlines avoid cumulative drift for rates such as 59.826 FPS.
-            val frameRate = ndsRuntime?.frameRate ?: 60.0
-            val speed = emulatorCore.fastForwardMultiplier.toDouble().coerceIn(1.0, 1000.0)
-            val frameIntervalNs = (1_000_000_000.0 / (frameRate * speed)).toLong().coerceAtLeast(1L)
+            // Pace at the core's native refresh rate. Fast-forward changes frames per
+            // refresh tick rather than causing unnecessary Compose redraws at 1000 Hz+.
+            val frameRate = runtime?.frameRate ?: 60.0
+            val frameIntervalNs = (1_000_000_000.0 / frameRate).toLong().coerceAtLeast(1L)
             nextFrameDeadlineNs += frameIntervalNs
             val remainingNs = nextFrameDeadlineNs - System.nanoTime()
             if (remainingNs >= 1_000_000L) {
                 delay((remainingNs / 1_000_000L).coerceAtLeast(1L))
             } else {
-                // Sub-millisecond targets (especially experimental speeds) are best-effort:
-                // run as quickly as the device/core can sustain without blocking the UI thread.
                 if (remainingNs < 0L) nextFrameDeadlineNs = System.nanoTime()
                 kotlinx.coroutines.yield()
             }
