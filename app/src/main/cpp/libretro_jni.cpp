@@ -470,6 +470,38 @@ Java_com_example_emulator_LibretroNative_nativeCopyVideoFrame(
     return required;
 }
 
+extern "C" JNIEXPORT jint JNICALL
+Java_com_example_emulator_LibretroNative_nativeCopyAudioSamples(
+    JNIEnv* env, jobject, jshortArray destination
+) {
+    if (!destination) return 0;
+    const jsize capacity = env->GetArrayLength(destination);
+    if (capacity < 2) return 0;
+    jshort* output = env->GetShortArrayElements(destination, nullptr);
+    if (!output) return 0;
+
+    size_t frames_to_read = 0;
+    {
+        std::lock_guard<std::mutex> lock(audio_mutex);
+        frames_to_read = std::min(
+            static_cast<size_t>(capacity / 2), audio_queued_frames
+        );
+        for (size_t frame = 0; frame < frames_to_read; ++frame) {
+            const size_t offset = audio_read_frame * 2U;
+            output[frame * 2U] = audio_ring[offset];
+            output[frame * 2U + 1U] = audio_ring[offset + 1U];
+            audio_read_frame = (audio_read_frame + 1U) % AUDIO_RING_CAPACITY_FRAMES;
+        }
+        audio_queued_frames -= frames_to_read;
+    }
+    env->ReleaseShortArrayElements(destination, output, 0);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return 0;
+    }
+    return static_cast<jint>(frames_to_read * 2U);
+}
+
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_example_emulator_LibretroNative_nativeSerialize(JNIEnv* env, jobject) {
     if (!game_loaded || !serialize_size || !serialize_state) return nullptr;
