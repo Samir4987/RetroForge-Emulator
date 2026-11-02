@@ -50,7 +50,8 @@ double core_sample_rate = 48000.0;
 std::string system_directory;
 std::string save_directory;
 constexpr unsigned MAX_VIDEO_DIMENSION = 4096;
-constexpr size_t MAX_VIDEO_PIXELS = 4U * 1024U * 1024U;\nconstexpr size_t MAX_ROM_BYTES = 512U * 1024U * 1024U;
+constexpr size_t MAX_VIDEO_PIXELS = 4U * 1024U * 1024U;
+constexpr size_t MAX_ROM_BYTES = 512U * 1024U * 1024U;
 
 using SetEnvironment = void (*)(retro_environment_t);
 using SetVideo = void (*)(retro_video_refresh_t);
