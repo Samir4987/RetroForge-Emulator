@@ -447,6 +447,7 @@ fun EmulatorScreen(
                                         emulatorCore = emulatorCore,
                                         saveStates = saveStates,
                                         coroutineScope = coroutineScope,
+                                        context = context,
                                         onSaved = {
                                             Toast.makeText(context, "Quick Saved to Slot 1", Toast.LENGTH_SHORT).show()
                                         },
@@ -609,6 +610,7 @@ fun EmulatorScreen(
                             emulatorCore = emulatorCore,
                             saveStates = saveStates,
                             coroutineScope = coroutineScope,
+                            context = context,
                             onSaved = {
                                 Toast.makeText(context, "State saved to Slot ${slot + 1}", Toast.LENGTH_SHORT).show()
                             },
@@ -698,6 +700,7 @@ private fun saveNdsStateToSlot(
     emulatorCore: EmulatorCore,
     saveStates: MutableList<SaveStateDto>,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
+    context: android.content.Context,
     onSaved: () -> Unit,
     onSaveFailed: () -> Unit
 ) {
@@ -737,10 +740,10 @@ private fun saveNdsStateToSlot(
         } catch (failure: Throwable) {
             onSaveFailed()
             Toast.makeText(
-                android.app.Application(),
+                context,
                 failure.message ?: "Could not save Nintendo DS state.",
                 Toast.LENGTH_LONG
-            )
+            ).show()
         } finally {
             emulatorCore.isPaused = wasPaused
             activeRuntime.setPaused(wasPaused)
