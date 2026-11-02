@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <unordered_map>
@@ -398,6 +399,13 @@ Java_com_example_emulator_LibretroNative_nativeRunFrame(JNIEnv*, jobject) {
     if(!pending_audio.empty()) { send_audio(pending_audio.data(),pending_audio.size()); pending_audio.clear(); }
     return JNI_TRUE;
 }
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_emulator_LibretroNative_nativeSetVideoFrameEnabled(
+    JNIEnv*, jobject, jboolean enabled
+) {
+    video_frame_enabled.store(enabled == JNI_TRUE, std::memory_order_relaxed);
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_emulator_LibretroNative_nativeSetInputState(JNIEnv*, jobject, jint mask, jfloat x, jfloat y, jboolean touching) {
     joypad_mask=static_cast<unsigned>(mask);
