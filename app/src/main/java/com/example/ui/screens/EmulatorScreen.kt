@@ -62,7 +62,6 @@ import com.example.emulator.LibretroCoreSpec
 import com.example.emulator.LibretroRuntime
 import com.example.emulator.NdsSaveStateStore
 import com.example.emulator.RetroSystem
-import com.example.emulator.toNintendoDsScreens
 import com.example.ui.components.RetroScreenView
 import com.example.ui.components.SaveSlotDialog
 import com.example.ui.components.VirtualController
@@ -238,7 +237,7 @@ fun EmulatorScreen(
                         withContext(Dispatchers.Default) {
                             runtime.updateInput(inputSnapshot).getOrThrow()
                             runtime.runFrame().getOrThrow()
-                            runtime.readVideoFrame().getOrThrow()
+                            runtime.readNintendoDsScreens().getOrThrow()
                         }
                     }
                     result.onFailure { failure ->
@@ -246,20 +245,12 @@ fun EmulatorScreen(
                         emulatorCore.isPaused = true
                         Toast.makeText(context, "NDS runtime stopped: ${ndsLoadError}", Toast.LENGTH_LONG).show()
                     }
-                    result.getOrNull()?.let { frame ->
-                        if (frame != null) {
-                            runCatching {
-                                frame.toNintendoDsScreens()
-                            }.onSuccess { screens ->
-                                emulatorCore.updateNativeNintendoDsFrames(screens.top, screens.bottom)
-                                emulatorCore.frameCounter += 1L
-                                if (emulatorCore.frameCounter % 60L == 0L) {
-                                    emulatorCore.playTimeSeconds += 1L
-                                }
-                            }.onFailure { failure ->
-                                ndsLoadError = failure.message ?: "Unsupported Nintendo DS frame layout."
-                                emulatorCore.isPaused = true
-                                Toast.makeText(context, ndsLoadError ?: "Unsupported Nintendo DS frame layout.", Toast.LENGTH_LONG).show()
+                    result.getOrNull()?.let { screens ->
+                        if (screens != null) {
+                            emulatorCore.updateNativeNintendoDsFrames(screens.top, screens.bottom)
+                            emulatorCore.frameCounter += 1L
+                            if (emulatorCore.frameCounter % 60L == 0L) {
+                                emulatorCore.playTimeSeconds += 1L
                             }
                         }
                     }
