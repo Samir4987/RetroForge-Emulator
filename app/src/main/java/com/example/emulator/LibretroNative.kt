@@ -8,6 +8,8 @@ package com.example.emulator
 internal class LibretroNative {
     external fun nativeOpen(corePath: String, romPath: String): String?
     external fun nativeRunFrame(): Boolean
+    /** Returns [width, height, ARGB pixels...] for the most recent frame, or null before the first frame. */
+    external fun nativeGetVideoFrame(): IntArray?
     external fun nativeClose()
 
     companion object {
