@@ -46,6 +46,7 @@ class EmulatorCore(
     private var playerHealth = 100
     private var score = 0
     private var gameTick = 0
+    private val fastForwardSteps = FrameStepAccumulator()
 
     // N64 3D engine state
     private var pitch = 0f
@@ -113,6 +114,7 @@ class EmulatorCore(
         yaw = 0f
         lasers.clear()
         shieldCharge = 100
+        fastForwardSteps.reset()
     }
 
     /** Replace the placeholder renderer with frames delivered by a real native core. */
@@ -142,8 +144,8 @@ class EmulatorCore(
             return
         }
 
-        // Fast-forward step execution
-        val steps = max(1, fastForwardMultiplier.toInt())
+        // Fast-forward step execution; fractional multipliers are distributed across ticks.
+        val steps = fastForwardSteps.nextSteps(fastForwardMultiplier)
         for (s in 0 until steps) {
             updateSimulation()
             frameCounter++
