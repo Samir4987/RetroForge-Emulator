@@ -61,7 +61,7 @@ using GetSystemInfo = void (*)(SystemInfo*);
 using LoadGame = bool (*)(const GameInfo*);
 using RunFrame = void (*)();
 using UnloadGame = void (*)();
-using GetAvInfo = void (*)(AvInfo*);
+using GetAvInfo = void (*)(AvInfo*);\nusing SerializeSize = size_t (*)();\nusing Serialize = bool (*)(void*, size_t);\nusing Unserialize = bool (*)(const void*, size_t);
 SetEnvironment set_environment = nullptr;
 SetVideo set_video = nullptr;
 SetAudio set_audio = nullptr;
@@ -73,7 +73,7 @@ GetSystemInfo get_system_info = nullptr;
 LoadGame load_game = nullptr;
 RunFrame run_frame = nullptr;
 UnloadGame unload_game = nullptr;
-GetAvInfo get_av_info = nullptr;
+GetAvInfo get_av_info = nullptr;\nSerializeSize serialize_size = nullptr;\nSerialize serialize_state = nullptr;\nUnserialize unserialize_state = nullptr;
 
 bool environment(unsigned command, void* data) {
     // RETRO_ENVIRONMENT_SET_PIXEL_FORMAT = 10.
@@ -271,6 +271,10 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
         symbol(run_frame, "retro_run") &&
         symbol(unload_game, "retro_unload_game") &&
         symbol(get_av_info, "retro_get_system_av_info");
+    // Serialization is optional in Libretro; the runtime reports unsupported when absent.
+    symbol(serialize_size, "retro_serialize_size");
+    symbol(serialize_state, "retro_serialize");
+    symbol(unserialize_state, "retro_unserialize");
     if (!ok) {
         close_core();
         env->ReleaseStringUTFChars(rom_path, native_rom_path);
@@ -421,6 +425,61 @@ Java_com_example_emulator_LibretroNative_nativeCopyVideoFrame(
         return 0;
     }
     return required;
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_example_emulator_LibretroNative_nativeSerialize(JNIEnv* env, jobject) {
+    if (!game_loaded || !serialize_size || !serialize_state) return nullptr;
+    const size_t state_size = serialize_size();
+    constexpr size_t MAX_SERIALIZED_STATE_BYTES = 256U * 1024U * 1024U;
+    if (state_size == 0 || state_size > MAX_SERIALIZED_STATE_BYTES ||
+        state_size > static_cast<size_t>(std::numeric_limits<jsize>::max())) {
+        LOGE("Libretro core returned an invalid serialization size.");
+        return nullptr;
+    }
+    std::vector<uint8_t> state;
+    try {
+        state.resize(state_size);
+    } catch (...) {
+        LOGE("Could not allocate Libretro save-state buffer.");
+        return nullptr;
+    }
+    if (!serialize_state(state.data(), state.size())) return nullptr;
+    jbyteArray result = env->NewByteArray(static_cast<jsize>(state.size()));
+    if (!result) return nullptr;
+    env->SetByteArrayRegion(
+        result, 0, static_cast<jsize>(state.size()),
+        reinterpret_cast<const jbyte*>(state.data())
+    );
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return nullptr;
+    }
+    return result;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_example_emulator_LibretroNative_nativeUnserialize(
+    JNIEnv* env, jobject, jbyteArray state_array
+) {
+    if (!game_loaded || !unserialize_state || !state_array) return JNI_FALSE;
+    const jsize state_size = env->GetArrayLength(state_array);
+    constexpr jsize MAX_SERIALIZED_STATE_BYTES = 256 * 1024 * 1024;
+    if (state_size <= 0 || state_size > MAX_SERIALIZED_STATE_BYTES) return JNI_FALSE;
+    std::vector<uint8_t> state;
+    try {
+        state.resize(static_cast<size_t>(state_size));
+    } catch (...) {
+        return JNI_FALSE;
+    }
+    env->GetByteArrayRegion(
+        state_array, 0, state_size, reinterpret_cast<jbyte*>(state.data())
+    );
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return JNI_FALSE;
+    }
+    return unserialize_state(state.data(), state.size()) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL
