@@ -24,6 +24,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Fetch and verify pinned melonDS DS Android core
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash scripts/fetch-melonds-ds-core.sh
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
