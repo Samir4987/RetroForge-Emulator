@@ -12,6 +12,8 @@ internal class LibretroNative {
     external fun nativeGetVideoFrame(): IntArray?
     external fun nativeSetJoypadButton(buttonId: Int, pressed: Boolean)
     external fun nativeSetPointer(x: Int, y: Int, pressed: Boolean)
+    external fun nativeGetAudioSampleRate(): Double
+    external fun nativeReadAudioSamples(maxFrames: Int): ShortArray?
     external fun nativeClose()
 
     companion object {
