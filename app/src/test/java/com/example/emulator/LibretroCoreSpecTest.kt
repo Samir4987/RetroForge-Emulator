@@ -23,6 +23,8 @@ class LibretroCoreSpecTest {
         assertEquals(RetroSystem.NDS, LibretroCoreSpec.forExtension(".DS")?.system)
         assertEquals(RetroSystem.NDS, LibretroCoreSpec.forExtension("dsi")?.system)
         assertEquals(RetroSystem.NDS, LibretroCoreSpec.forExtension("IDS")?.system)
+        assertEquals(RetroSystem.NDS, RetroSystem.fromExtension("dsi"))
+        assertEquals(RetroSystem.NDS, RetroSystem.fromExtension("ids"))
     }
 
     @Test
