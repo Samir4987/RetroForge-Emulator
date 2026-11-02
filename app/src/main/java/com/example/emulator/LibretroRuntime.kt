@@ -61,6 +61,9 @@ class LibretroRuntime(
         if (!rom.isFile || rom.length() == 0L) {
             return Result.failure(IllegalArgumentException("ROM file is missing or empty."))
         }
+        if (rom.length() > 512L * 1024L * 1024L) {
+            return Result.failure(IllegalArgumentException("ROM exceeds the 512 MiB safety limit."))
+        }
         if (rom.extension.lowercase() !in coreSpec.extensions) {
             return Result.failure(IllegalArgumentException("Unsupported ROM extension: .${rom.extension.lowercase()}"))
         }
