@@ -92,6 +92,7 @@ class LibretroRuntime(
     private var native: LibretroNative? = null
     private var audioOutput: LibretroAudioOutput? = null
     private var videoTransferBuffer = IntArray(2)
+    private val audioTransferBuffer = ShortArray(8_192)
     private val coreFile: File
         get() = File(frontendLibrary.parentFile, coreSpec.libraryFileName)
 
@@ -273,7 +274,8 @@ class LibretroRuntime(
         check(state == State.GAME_LOADED) { "Load a ROM before running frames." }
         val bridge = checkNotNull(native)
         check(bridge.nativeRunFrame()) { "Native Libretro core is not running." }
-        bridge.nativeReadAudioSamples(4_096)?.let { audioOutput?.write(it) }
+        val sampleCount = bridge.nativeCopyAudioSamples(audioTransferBuffer)
+        if (sampleCount > 0) audioOutput?.write(audioTransferBuffer, sampleCount)
     } }
 
     fun close() = synchronized(nativeLock) {
