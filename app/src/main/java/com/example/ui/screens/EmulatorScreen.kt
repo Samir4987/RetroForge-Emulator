@@ -76,6 +76,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @Composable
 fun EmulatorScreen(
@@ -222,7 +223,8 @@ fun EmulatorScreen(
         }
     }
 
-    // Native NDS frames run off the UI thread; other systems retain their existing core loop.
+    // One display tick per 60 Hz refresh. Native NDS executes the selected number
+    // of core frames on a worker thread; other systems apply the same multiplier in tick().
     var frameTicker by remember { mutableStateOf(0L) }
     LaunchedEffect(game.id, isNdsGame, ndsRuntime) {
         var nextFrameDeadlineNs = System.nanoTime()
@@ -233,11 +235,24 @@ fun EmulatorScreen(
                 val runtime = ndsRuntime
                 if (runtime != null && !emulatorCore.isPaused) {
                     val inputSnapshot = emulatorCore.inputState.copy()
+                    val requestedSteps = emulatorCore.fastForwardMultiplier
+                        .coerceIn(1f, 1000f)
+                        .roundToInt()
                     val result = runCatching {
                         withContext(Dispatchers.Default) {
                             runtime.updateInput(inputSnapshot).getOrThrow()
-                            runtime.runFrame().getOrThrow()
-                            runtime.readNintendoDsScreens().getOrThrow()
+                            var framesRun = 0
+                            for (step in 0 until requestedSteps) {
+                                if (emulatorCore.isPaused) break
+                                runtime.runFrame().getOrThrow()
+                                framesRun += 1
+                            }
+                            val screens = if (framesRun > 0) {
+                                runtime.readNintendoDsScreens().getOrThrow()
+                            } else {
+                                null
+                            }
+                            framesRun to screens
                         }
                     }
                     result.onFailure { failure ->
@@ -245,22 +260,21 @@ fun EmulatorScreen(
                         emulatorCore.isPaused = true
                         Toast.makeText(context, "NDS runtime stopped: ${ndsLoadError}", Toast.LENGTH_LONG).show()
                     }
-                    result.getOrNull()?.let { screens ->
-                        if (screens != null) {
+                    result.getOrNull()?.let { (framesRun, screens) ->
+                        if (framesRun > 0 && screens != null) {
+                            val previousFrame = emulatorCore.frameCounter
                             emulatorCore.updateNativeNintendoDsFrames(screens.top, screens.bottom)
-                            emulatorCore.frameCounter += 1L
-                            if (emulatorCore.frameCounter % 60L == 0L) {
-                                emulatorCore.playTimeSeconds += 1L
-                            }
+                            emulatorCore.frameCounter += framesRun
+                            emulatorCore.playTimeSeconds +=
+                                (emulatorCore.frameCounter / 60L) - (previousFrame / 60L)
                         }
                     }
                 }
             }
             frameTicker = emulatorCore.frameCounter
 
-            val speed = emulatorCore.fastForwardMultiplier.toDouble().coerceIn(1.0, 1000.0)
-            val frameIntervalNs = (1_000_000_000.0 / (60.0 * speed)).toLong().coerceAtLeast(1L)
-            nextFrameDeadlineNs += frameIntervalNs
+            // The core multiplier changes the number of emulated frames, not the UI refresh rate.
+            nextFrameDeadlineNs += (1_000_000_000.0 / 60.0).toLong()
             val remainingNs = nextFrameDeadlineNs - System.nanoTime()
             if (remainingNs >= 1_000_000L) {
                 delay((remainingNs / 1_000_000L).coerceAtLeast(1L))
