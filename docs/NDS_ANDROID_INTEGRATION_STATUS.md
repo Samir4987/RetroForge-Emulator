@@ -13,7 +13,8 @@ Do not merge to `main`; AI 1 handles merges.
   into Android CI.
 - Extends the JNI bridge with video conversion to ARGB_8888, interleaved stereo
   PCM callbacks, joypad/pointer input, core option defaults, system/assets/save
-  directory callbacks, and optional Libretro serialize/unserialize entry points.
+  directory callbacks, Libretro API-version validation, and optional serialize/
+  unserialize entry points. Native ROM, frame and save-state allocations are bounded.
 - Decouples native audio callbacks from speaker playback using a bounded PCM
   queue and a dedicated non-blocking AudioTrack worker. Fast-forward no longer
   waits for real-time speaker consumption; old audio chunks are dropped under
@@ -32,8 +33,13 @@ Do not merge to `main`; AI 1 handles merges.
 - Connects the NDS save-slot UI to native serialization when the core supports it.
 - Pauses audio/emulation with the app lifecycle and closes the native core when
   leaving the screen.
-- Adds unit tests for core selection, all supported NDS extensions, screen
-  dimensions, and Libretro joypad bit positions.
+- Stages ROM files and initializes the native core on an IO dispatcher, not the UI thread.
+- Adds local NDS save-state storage with atomic slot replacement and a 256 MiB limit;
+  the save dialog identifies these slots as LOCAL ONLY and skips Firestore.
+- Batches fast-forward frames at the native core rate while throttling Compose redraws;
+  fractional multipliers (including 1.5x) are accumulated without truncation.
+- Adds unit tests for core selection, NDS extensions, screen dimensions, joypad
+  bit positions, local save-state storage and fractional fast-forward pacing.
 
 ## Validation status
 
