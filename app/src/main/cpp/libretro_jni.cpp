@@ -64,7 +64,7 @@ using GetSystemInfo = void (*)(SystemInfo*);
 using LoadGame = bool (*)(const GameInfo*);
 using RunFrame = void (*)();
 using UnloadGame = void (*)();
-using GetAvInfo = void (*)(AvInfo*);\nusing SerializeSize = size_t (*)();\nusing Serialize = bool (*)(void*, size_t);\nusing Unserialize = bool (*)(const void*, size_t);
+using GetAvInfo = void (*)(AvInfo*);\nusing GetApiVersion = unsigned (*)();\nusing SerializeSize = size_t (*)();\nusing Serialize = bool (*)(void*, size_t);\nusing Unserialize = bool (*)(const void*, size_t);
 SetEnvironment set_environment = nullptr;
 SetVideo set_video = nullptr;
 SetAudio set_audio = nullptr;
@@ -76,7 +76,7 @@ GetSystemInfo get_system_info = nullptr;
 LoadGame load_game = nullptr;
 RunFrame run_frame = nullptr;
 UnloadGame unload_game = nullptr;
-GetAvInfo get_av_info = nullptr;\nSerializeSize serialize_size = nullptr;\nSerialize serialize_state = nullptr;\nUnserialize unserialize_state = nullptr;
+GetAvInfo get_av_info = nullptr;\nGetApiVersion get_api_version = nullptr;\nSerializeSize serialize_size = nullptr;\nSerialize serialize_state = nullptr;\nUnserialize unserialize_state = nullptr;
 
 bool environment(unsigned command, void* data) {
     // RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY = 9.
@@ -307,7 +307,8 @@ Java_com_example_emulator_LibretroNative_nativeOpen(
         symbol(load_game, "retro_load_game") &&
         symbol(run_frame, "retro_run") &&
         symbol(unload_game, "retro_unload_game") &&
-        symbol(get_av_info, "retro_get_system_av_info");
+        symbol(get_av_info, "retro_get_system_av_info") &&
+        symbol(get_api_version, "retro_api_version");
     // Serialization is optional in Libretro; the runtime reports unsupported when absent.
     symbol(serialize_size, "retro_serialize_size");
     symbol(serialize_state, "retro_serialize");
@@ -316,6 +317,12 @@ Java_com_example_emulator_LibretroNative_nativeOpen(
         close_core();
         env->ReleaseStringUTFChars(rom_path, native_rom_path);
         return env->NewStringUTF("Core is missing required Libretro API symbols.");
+    }
+
+    if (get_api_version() != 1U) {
+        close_core();
+        env->ReleaseStringUTFChars(rom_path, native_rom_path);
+        return env->NewStringUTF("Unsupported Libretro API version; expected version 1.");
     }
 
     set_environment(environment);
