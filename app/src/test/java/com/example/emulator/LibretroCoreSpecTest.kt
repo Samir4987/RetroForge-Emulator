@@ -13,12 +13,14 @@ class LibretroCoreSpecTest {
         assertNotNull(spec)
         assertEquals("melondsds_libretro_android.so", spec!!.libraryFileName)
         assertEquals("https://github.com/JesseTG/melonds-ds", spec.upstreamUrl)
-        assertEquals(setOf("nds", "dsi", "ids"), spec.extensions)
+        assertEquals(setOf("nds", "ds", "dsi", "ids"), spec.extensions)
     }
 
     @Test
     fun ndsExtensionsResolveCaseInsensitively() {
         assertEquals(RetroSystem.NDS, LibretroCoreSpec.forExtension(".NDS")?.system)
+        assertEquals(RetroSystem.NDS, LibretroCoreSpec.forExtension("ds")?.system)
+        assertEquals(RetroSystem.NDS, LibretroCoreSpec.forExtension(".DS")?.system)
         assertEquals(RetroSystem.NDS, LibretroCoreSpec.forExtension("dsi")?.system)
         assertEquals(RetroSystem.NDS, LibretroCoreSpec.forExtension("IDS")?.system)
     }
