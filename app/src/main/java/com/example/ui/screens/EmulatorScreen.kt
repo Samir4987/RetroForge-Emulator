@@ -258,21 +258,28 @@ fun EmulatorScreen(
                 val steps = frameAccumulator.nextSteps(emulatorCore.fastForwardMultiplier)
                 val inputSnapshot = emulatorCore.inputState.copy()
                 val result = withContext(Dispatchers.Default) {
-                    runCatching {
+                    var advancedFrames = 0
+                    val frameResult = runCatching {
                         runtime.setVideoFrameEnabled(false)
                         try {
                             for (step in 0 until (steps - 1)) {
                                 if (emulatorCore.isPaused) break
                                 runtime.runFrame(inputSnapshot).getOrThrow()
+                                advancedFrames++
                             }
                             if (!emulatorCore.isPaused) {
                                 runtime.setVideoFrameEnabled(true)
                                 runtime.runFrame(inputSnapshot).getOrThrow()
+                                advancedFrames++
                             }
                         } finally {
                             runtime.setVideoFrameEnabled(true)
                         }
                     }
+                    // Video is skipped for intermediate fast-forward frames, but play time
+                    // and frame counters must still reflect the number of frames emulated.
+                    emulatorCore.recordExternalFrames(advancedFrames)
+                    frameResult
                 }
                 if (result.isFailure) {
                     ndsStatus = result.exceptionOrNull()?.message ?: "Nintendo DS emulation stopped."
