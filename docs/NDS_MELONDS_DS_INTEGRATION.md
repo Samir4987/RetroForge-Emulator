@@ -17,12 +17,12 @@ The upstream Android build targets Android API 24 / arm64-v8a and disables the O
 - Dynamic loading of the Libretro frontend and melonDS DS core.
 - App-private Libretro system and battery-save directories are supplied through `RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY` and `RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY`.
 - Video callback conversion for 0RGB1555, XRGB8888 and RGB565 to ARGB_8888.
-- Reusable JNI frame transfer storage and bounded frame memory.
+- Reusable JNI frame transfer storage, reusable Kotlin top/bottom pixel arrays, and bounded frame memory.
 - Stacked (256x384) and side-by-side (512x192) frame splitting into separate 256x192 top and bottom screens.
 - Main Compose emulator screen runs the native NDS core off the UI thread and copies its two screens into reused Android bitmaps.
 - Existing virtual controller buttons are mapped to standard Libretro joypad IDs; bottom-screen tap/drag coordinates are sent as `RETRO_DEVICE_POINTER`.
-- Stereo PCM is buffered in a bounded native ring and drained to non-blocking Android `AudioTrack`.
-- Native `retro_serialize_size`, `retro_serialize` and `retro_unserialize` calls are exposed through Kotlin.
+- Stereo PCM is buffered in a bounded native ring, copied into a reusable JNI audio array, and drained to non-blocking Android `AudioTrack`.
+- The frontend validates Libretro API version 1 and exposes native `retro_serialize_size`, `retro_serialize` and `retro_unserialize` calls through Kotlin.
 - Save slots 0–4 use atomic app-private files with a 256 MiB safety limit. NDS save states are not uploaded to Firestore.
 - Runtime native calls are serialized so frame execution cannot overlap save/load or teardown.
 - The NDS library recognizes `.nds`, `.ds`, `.dsi` and `.ids` file extensions.
