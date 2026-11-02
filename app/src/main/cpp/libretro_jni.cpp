@@ -1,4 +1,5 @@
 #include <jni.h>
+#include <algorithm>
 #include <android/log.h>
 #include <dlfcn.h>
 #include <cstdint>
