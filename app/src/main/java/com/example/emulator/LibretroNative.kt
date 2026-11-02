@@ -10,6 +10,8 @@ internal class LibretroNative {
     external fun nativeRunFrame(): Boolean
     /** Returns [width, height, ARGB pixels...] for the most recent frame, or null before the first frame. */
     external fun nativeGetVideoFrame(): IntArray?
+    external fun nativeSetJoypadButton(buttonId: Int, pressed: Boolean)
+    external fun nativeSetPointer(x: Int, y: Int, pressed: Boolean)
     external fun nativeClose()
 
     companion object {
