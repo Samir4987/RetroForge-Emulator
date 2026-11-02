@@ -659,6 +659,8 @@ fun EmulatorScreen(
                                     check(restored) { "The Nintendo DS core rejected this save state." }
                                     Toast.makeText(context, "Loaded Slot ${dto.slot + 1}", Toast.LENGTH_SHORT).show()
                                     showSlotDialog = false
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    throw cancelled
                                 } catch (failure: Throwable) {
                                     Toast.makeText(
                                         context,
@@ -744,8 +746,9 @@ private fun saveNdsStateToSlot(
             val existingIndex = saveStates.indexOfFirst { it.slot == dto.slot }
             if (existingIndex >= 0) saveStates[existingIndex] = dto else saveStates.add(dto)
             onSaved()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (failure: Throwable) {
-            onSaveFailed()
             Toast.makeText(
                 context,
                 failure.message ?: "Could not save Nintendo DS state.",
