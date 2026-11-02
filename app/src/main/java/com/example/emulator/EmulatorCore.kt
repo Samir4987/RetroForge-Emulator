@@ -31,7 +31,7 @@ class EmulatorCore(
     val inputState = EmulatorInputState()
     val rewindBuffer = RewindBuffer(capacity = 360)
 
-    var isPaused = false
+    @Volatile var isPaused = false
     var isRewinding = false
     var fastForwardMultiplier = 1.0f // 1x, 1.5x, 2x, 4x, 8x
     var frameCounter = 0L
