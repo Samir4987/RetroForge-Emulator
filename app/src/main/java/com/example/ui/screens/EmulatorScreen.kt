@@ -259,9 +259,18 @@ fun EmulatorScreen(
                 val inputSnapshot = emulatorCore.inputState.copy()
                 val result = withContext(Dispatchers.Default) {
                     runCatching {
-                        repeat(steps) {
-                            if (emulatorCore.isPaused) return@runCatching
-                            runtime.runFrame(inputSnapshot).getOrThrow()
+                        runtime.setVideoFrameEnabled(false)
+                        try {
+                            for (step in 0 until (steps - 1)) {
+                                if (emulatorCore.isPaused) break
+                                runtime.runFrame(inputSnapshot).getOrThrow()
+                            }
+                            if (!emulatorCore.isPaused) {
+                                runtime.setVideoFrameEnabled(true)
+                                runtime.runFrame(inputSnapshot).getOrThrow()
+                            }
+                        } finally {
+                            runtime.setVideoFrameEnabled(true)
                         }
                     }
                 }
