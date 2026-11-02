@@ -50,7 +50,7 @@ double core_sample_rate = 48000.0;
 std::string system_directory;
 std::string save_directory;
 constexpr unsigned MAX_VIDEO_DIMENSION = 4096;
-constexpr size_t MAX_VIDEO_PIXELS = 4U * 1024U * 1024U;
+constexpr size_t MAX_VIDEO_PIXELS = 4U * 1024U * 1024U;\nconstexpr size_t MAX_ROM_BYTES = 512U * 1024U * 1024U;
 
 using SetEnvironment = void (*)(retro_environment_t);
 using SetVideo = void (*)(retro_video_refresh_t);
@@ -339,12 +339,18 @@ Java_com_example_emulator_LibretroNative_nativeOpen(
         }
         const std::streamoff length = input.tellg();
         if (length <= 0 || static_cast<unsigned long long>(length) >
-                static_cast<unsigned long long>(std::numeric_limits<size_t>::max())) {
+                static_cast<unsigned long long>(MAX_ROM_BYTES)) {
             env->ReleaseStringUTFChars(rom_path, native_rom_path);
             close_core();
-            return env->NewStringUTF("ROM file is empty or too large.");
+            return env->NewStringUTF("ROM file is empty or exceeds the 512 MiB safety limit.");
         }
-        rom_data.resize(static_cast<size_t>(length));
+        try {
+            rom_data.resize(static_cast<size_t>(length));
+        } catch (...) {
+            env->ReleaseStringUTFChars(rom_path, native_rom_path);
+            close_core();
+            return env->NewStringUTF("Not enough memory to load this ROM.");
+        }
         input.seekg(0, std::ios::beg);
         if (!input.read(reinterpret_cast<char*>(rom_data.data()), length)) {
             env->ReleaseStringUTFChars(rom_path, native_rom_path);
