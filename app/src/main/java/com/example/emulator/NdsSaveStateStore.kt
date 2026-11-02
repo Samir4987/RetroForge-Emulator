@@ -47,9 +47,8 @@ class NdsSaveStateStore(private val filesDir: File) {
                 stream.write(state)
                 stream.fd.sync()
             }
-            if (!temporary.renameTo(destination)) {
-                temporary.copyTo(destination, overwrite = true)
-                check(temporary.delete()) { "Could not remove temporary save-state file." }
+            check(temporary.renameTo(destination)) {
+                "Could not atomically commit the save-state file."
             }
         } catch (failure: Throwable) {
             temporary.delete()
