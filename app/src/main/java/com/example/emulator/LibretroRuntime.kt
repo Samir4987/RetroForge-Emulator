@@ -224,6 +224,23 @@ class LibretroRuntime(
         bridge.nativeSetPointer(pointer.x, pointer.y, input.isTouching)
     }
 
+    /** Serializes the running core; null is reported as an unsupported-core failure. */
+    fun saveState(): Result<ByteArray> = runCatching {
+        check(state == State.GAME_LOADED) { "Load a ROM before saving state." }
+        checkNotNull(native).nativeSerialize()
+            ?: throw UnsupportedOperationException("The loaded Libretro core does not support save states.")
+    }
+
+    /** Restores a previously serialized core state. */
+    fun loadState(stateBytes: ByteArray): Result<Unit> = runCatching {
+        check(state == State.GAME_LOADED) { "Load a ROM before restoring state." }
+        require(stateBytes.isNotEmpty()) { "Save-state data is empty." }
+        require(stateBytes.size <= 256 * 1024 * 1024) { "Save-state data exceeds the 256 MiB limit." }
+        check(checkNotNull(native).nativeUnserialize(stateBytes)) {
+            "The Libretro core rejected this save state."
+        }
+    }
+
     /** Advances one core frame and captures video through the registered Libretro callback. */
     fun runFrame(): Result<Unit> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before running frames." }
