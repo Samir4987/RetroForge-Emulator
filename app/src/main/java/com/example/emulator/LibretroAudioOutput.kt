@@ -65,10 +65,14 @@ internal class LibretroAudioOutput(sampleRateHz: Int) : AutoCloseable {
         }
     }
 
-    fun write(samples: ShortArray) {
+    fun write(samples: ShortArray, sampleCount: Int = samples.size) {
         val audioTrack = track ?: return
-        if (samples.isEmpty() || audioTrack.playState != AudioTrack.PLAYSTATE_PLAYING) return
-        runCatching { audioTrack.write(samples, 0, samples.size, AudioTrack.WRITE_NON_BLOCKING) }
+        if (sampleCount <= 0 || sampleCount > samples.size ||
+            audioTrack.playState != AudioTrack.PLAYSTATE_PLAYING
+        ) return
+        runCatching {
+            audioTrack.write(samples, 0, sampleCount, AudioTrack.WRITE_NON_BLOCKING)
+        }
     }
 
     override fun close() {
