@@ -396,29 +396,31 @@ Java_com_example_emulator_LibretroNative_nativeReadAudioSamples(
     return result;
 }
 
-extern "C" JNIEXPORT jintArray JNICALL
-Java_com_example_emulator_LibretroNative_nativeGetVideoFrame(JNIEnv* env, jobject) {
-    if (!video_frame_ready || video_width == 0 || video_height == 0) return nullptr;
+extern "C" JNIEXPORT jint JNICALL
+Java_com_example_emulator_LibretroNative_nativeCopyVideoFrame(
+    JNIEnv* env, jobject, jintArray destination
+) {
+    if (!video_frame_ready || video_width == 0 || video_height == 0) return 0;
     const size_t pixel_count = static_cast<size_t>(video_width) * video_height;
     if (pixel_count > MAX_VIDEO_PIXELS ||
         pixel_count + 2U > static_cast<size_t>(std::numeric_limits<jsize>::max())) {
-        return nullptr;
+        return 0;
     }
 
-    jintArray result = env->NewIntArray(static_cast<jsize>(pixel_count + 2U));
-    if (!result) return nullptr;
+    const jsize required = static_cast<jsize>(pixel_count + 2U);
+    if (!destination || env->GetArrayLength(destination) < required) return required;
     const jint dimensions[2] = {
         static_cast<jint>(video_width), static_cast<jint>(video_height)
     };
-    env->SetIntArrayRegion(result, 0, 2, dimensions);
+    env->SetIntArrayRegion(destination, 0, 2, dimensions);
     env->SetIntArrayRegion(
-        result, 2, static_cast<jsize>(pixel_count), video_pixels.data()
+        destination, 2, static_cast<jsize>(pixel_count), video_pixels.data()
     );
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
-        return nullptr;
+        return 0;
     }
-    return result;
+    return required;
 }
 
 extern "C" JNIEXPORT void JNICALL
