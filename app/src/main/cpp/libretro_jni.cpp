@@ -35,6 +35,7 @@ constexpr size_t MAX_VIDEO_PIXELS = 4U * 1024U * 1024U;
 void* core = nullptr;
 bool initialized = false;
 bool game_loaded = false;
+std::atomic<bool> video_frame_enabled{true};
 std::vector<uint8_t> rom_data;
 JavaVM* java_vm = nullptr;
 jweak java_bridge = nullptr;
@@ -144,7 +145,8 @@ bool environment(unsigned command, void* data) {
     return false;
 }
 void video_refresh(const void* data, unsigned width, unsigned height, size_t pitch) {
-    if (!data || !java_vm || !java_bridge || !video_callback || !width || !height ||
+    if (!data || !video_frame_enabled.load(std::memory_order_relaxed) ||
+        !java_vm || !java_bridge || !video_callback || !width || !height ||
         width > 4096 || height > 4096) return;
     const size_t bpp = current_pixel_format == 1 ? 4 : 2;
     if (pitch < static_cast<size_t>(width) * bpp) return;
@@ -246,6 +248,7 @@ void close_core(JNIEnv* env = nullptr) {
     rom_data.clear(); pending_audio.clear(); core_options.clear();
     current_pixel_format = 1; joypad_mask = 0; pointer_x = 0.5f; pointer_y = 0.5f; pointer_pressed = false;
     current_sample_rate = 32768.0; current_frame_rate = 60.0;
+    video_frame_enabled.store(true, std::memory_order_relaxed);
     if (env && java_bridge) env->DeleteWeakGlobalRef(java_bridge);
     java_bridge=nullptr; video_callback=nullptr; audio_callback=nullptr;
     reset_symbols();
