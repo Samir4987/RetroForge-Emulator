@@ -4,6 +4,7 @@
 
 - The app recognizes `.n64`, `.z64`, and `.v64` ROM extensions and selects the Mupen64Plus-Next Libretro core.
 - The JNI frontend forwards standard Libretro joypad and analog input. RetroForge's left stick maps to the N64 analog stick; the four C-buttons map to the right analog axes.
+- `EmulatorScreen` now selects a Libretro core from the selected game's system and routes imported N64 ROM bytes through Mupen64Plus-Next, preserving `.n64`, `.z64`, or `.v64` as the temporary ROM extension. GBA continues using mGBA; built-in games and systems without an available ROM/core retain the demo fallback.
 - The JNI frontend accepts Libretro GLES2 and GLES3 hardware-rendering requests, creates an EGL pbuffer context, supplies GL procedure lookup and framebuffer callbacks, and attempts RGBA frame readback into the Android bitmap pipeline.
 - The build pins upstream `libretro/mupen64plus-libretro-nx` at `6752836de8b224febfd5708444755b77712ac939`, builds its Android GLES3 target, and packages the resulting library as `mupen64plus_next_libretro_android.so`.
 - The pinned upstream GPL-3.0 license is copied into the app's license assets.
@@ -11,7 +12,7 @@
 
 ## Not yet complete / not yet verified
 
-- The EGL implementation is an initial off-screen integration. It has not been validated against GLideN64 on a physical Android device. In particular, pbuffer/default-framebuffer assumptions, GLES3 config selection, GL state/readback behavior, and context lifecycle need runtime validation.
+- The N64 screen hookup is now implemented, but a successful core load/frame loop has not yet been verified on a device. The EGL implementation is an initial off-screen integration. It has not been validated against GLideN64 on a physical Android device. In particular, pbuffer/default-framebuffer assumptions, GLES3 config selection, GL state/readback behavior, and context lifecycle need runtime validation.
 - No N64 ROM has been verified to boot or play in RetroForge. Audio, save data, sustained frame pacing, controller mapping, and clean shutdown remain unverified for N64.
 - The first successful core build was for `arm64-v8a`. The expanded four-ABI build matrix must pass before claiming N64 core coverage across all configured Android ABIs.
 
