@@ -25,7 +25,7 @@ data class LibretroPointerPosition(val x: Int, val y: Int) {
     }
 }
 
-/** A copied, tightly packed ARGB_8888 frame emitted by the native Libretro video callback. */
+/** A tightly packed ARGB_8888 frame emitted by the native Libretro video callback. */
 data class LibretroVideoFrame(
     val width: Int,
     val height: Int,
