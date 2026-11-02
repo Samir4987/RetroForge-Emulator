@@ -65,7 +65,10 @@ using LoadGame = bool (*)(const GameInfo*);
 using RunFrame = void (*)();
 using UnloadGame = void (*)();
 using GetAvInfo = void (*)(AvInfo*);
-using GetApiVersion = unsigned (*)();\nusing SerializeSize = size_t (*)();\nusing Serialize = bool (*)(void*, size_t);\nusing Unserialize = bool (*)(const void*, size_t);
+using GetApiVersion = unsigned (*)();
+using SerializeSize = size_t (*)();
+using Serialize = bool (*)(void*, size_t);
+using Unserialize = bool (*)(const void*, size_t);
 SetEnvironment set_environment = nullptr;
 SetVideo set_video = nullptr;
 SetAudio set_audio = nullptr;
@@ -78,7 +81,10 @@ LoadGame load_game = nullptr;
 RunFrame run_frame = nullptr;
 UnloadGame unload_game = nullptr;
 GetAvInfo get_av_info = nullptr;
-GetApiVersion get_api_version = nullptr;\nSerializeSize serialize_size = nullptr;\nSerialize serialize_state = nullptr;\nUnserialize unserialize_state = nullptr;
+GetApiVersion get_api_version = nullptr;
+SerializeSize serialize_size = nullptr;
+Serialize serialize_state = nullptr;
+Unserialize unserialize_state = nullptr;
 
 bool environment(unsigned command, void* data) {
     // RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY = 9.
