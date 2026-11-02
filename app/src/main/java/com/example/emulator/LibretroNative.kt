@@ -1,9 +1,9 @@
 package com.example.emulator
 
 /**
- * JNI facade for the Libretro API. Native video frames are captured and exposed
- * to Kotlin; audio and input callbacks remain placeholders until their Android
- * pipelines are connected and verified on a device.
+ * JNI facade for the Libretro API. Native video, stereo audio and joypad/stylus
+ * callbacks are bridged to Kotlin. Real gameplay still requires a verified core
+ * binary, screen presentation wiring and device testing.
  */
 internal class LibretroNative {
     external fun nativeOpen(corePath: String, romPath: String): String?
