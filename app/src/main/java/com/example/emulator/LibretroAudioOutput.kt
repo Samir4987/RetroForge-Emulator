@@ -42,6 +42,29 @@ internal class LibretroAudioOutput(sampleRateHz: Int) : AutoCloseable {
             }
     }.getOrNull()
 
+    fun pause() {
+        track?.let { audioTrack ->
+            runCatching {
+                if (audioTrack.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                    audioTrack.pause()
+                    audioTrack.flush()
+                }
+            }
+        }
+    }
+
+    fun resume() {
+        track?.let { audioTrack ->
+            runCatching {
+                if (audioTrack.state == AudioTrack.STATE_INITIALIZED &&
+                    audioTrack.playState != AudioTrack.PLAYSTATE_PLAYING
+                ) {
+                    audioTrack.play()
+                }
+            }
+        }
+    }
+
     fun write(samples: ShortArray) {
         val audioTrack = track ?: return
         if (samples.isEmpty() || audioTrack.playState != AudioTrack.PLAYSTATE_PLAYING) return
