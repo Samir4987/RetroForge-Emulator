@@ -145,8 +145,7 @@ void video_refresh(const void* data, unsigned width, unsigned height, size_t pit
     video_height = height;
     video_frame_ready = true;
 }
-void queue_audio_frame(int16_t left, int16_t right) {
-    std::lock_guard<std::mutex> lock(audio_mutex);
+void queue_audio_frame_unlocked(int16_t left, int16_t right) {
     if (audio_queued_frames == AUDIO_RING_CAPACITY_FRAMES) {
         audio_read_frame = (audio_read_frame + 1U) % AUDIO_RING_CAPACITY_FRAMES;
         --audio_queued_frames;
@@ -159,13 +158,15 @@ void queue_audio_frame(int16_t left, int16_t right) {
 }
 
 void audio_sample(int16_t left, int16_t right) {
-    queue_audio_frame(left, right);
+    std::lock_guard<std::mutex> lock(audio_mutex);
+    queue_audio_frame_unlocked(left, right);
 }
 
 size_t audio_sample_batch(const int16_t* data, size_t frames) {
     if (!data) return 0;
+    std::lock_guard<std::mutex> lock(audio_mutex);
     for (size_t frame = 0; frame < frames; ++frame) {
-        queue_audio_frame(data[frame * 2U], data[frame * 2U + 1U]);
+        queue_audio_frame_unlocked(data[frame * 2U], data[frame * 2U + 1U]);
     }
     return frames;
 }
