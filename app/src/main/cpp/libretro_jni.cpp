@@ -227,6 +227,10 @@ void reset_symbols() {
     run_frame = nullptr;
     unload_game = nullptr;
     get_av_info = nullptr;
+    get_api_version = nullptr;
+    serialize_size = nullptr;
+    serialize_state = nullptr;
+    unserialize_state = nullptr;
 }
 
 void close_core() {
