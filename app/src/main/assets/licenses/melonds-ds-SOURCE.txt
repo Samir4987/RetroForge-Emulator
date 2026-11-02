@@ -1,6 +1,6 @@
 melonDS DS v1.4.0 — Corresponding Source
 
-The bundled Android arm64 shared library is distributed under GNU GPL version 3.
+The bundled Android arm64 shared library is distributed under GNU GPL version 3 or later (GPLv3+).
 Its corresponding source code, build files, and release history are available at:
 
 https://github.com/JesseTG/melonds-ds/tree/v1.4.0
