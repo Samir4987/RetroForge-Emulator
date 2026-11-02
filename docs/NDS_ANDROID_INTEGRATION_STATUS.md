@@ -14,8 +14,17 @@ Do not merge to `main`; AI 1 handles merges.
 - Extends the JNI bridge with video conversion to ARGB_8888, interleaved stereo
   PCM callbacks, joypad/pointer input, core option defaults, system/assets/save
   directory callbacks, and optional Libretro serialize/unserialize entry points.
-- Preserves audio sample order when writing PCM to Android `AudioTrack`; the
-  callback drains partial blocking writes rather than dropping unwritten samples.
+- Decouples native audio callbacks from speaker playback using a bounded PCM
+  queue and a dedicated non-blocking AudioTrack worker. Fast-forward no longer
+  waits for real-time speaker consumption; old audio chunks are dropped under
+  sustained overload rather than stalling emulation.
+- Moves large ROM staging and native core initialization to an IO dispatcher.
+- Batches NDS core frames at the core's native refresh rate while limiting
+  Compose redraws to the display cadence. Fractional speed multipliers such as
+  1.5x are accumulated without drift for both NDS and simulation systems.
+- Stores NDS save states atomically in app-private files (up to 256 MiB) instead
+  of putting large Base64 payloads into Firestore documents. Save slots are
+  explicitly marked LOCAL ONLY in the UI.
 - Routes imported NDS ROM bytes through the real core runtime in `EmulatorScreen`.
   The core's 256x384 vertically stacked frame is split into top and bottom
   256x192 bitmaps for the dual-screen Compose view.
@@ -38,7 +47,8 @@ Do not merge to `main`; AI 1 handles merges.
   passed on commit `f98c8c194775ca5ac9ee036b277c4f3a92aba6da`, including the
   native joypad-bitmask query fix. Run [#123](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41186170992)
   also passed on `0baa2affae73f2faac2de0f36c201b0f3e8ba881`.
-- The current audio continuity change is being validated by CI run [#129](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41201246426).
+- CI run [#129](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41201246426) was cancelled during Android SDK installation before the NDS tests or APK build ran.
+- The new audio queue, local save-state store, ROM I/O and fractional fast-forward changes have not yet received a successful CI run. The workflow now includes `NdsSaveStateStoreTest` and `FrameStepAccumulatorTest`.
 - This CI result verifies compilation, packaging, and the listed unit tests; it
   does not prove that a ROM boots or that gameplay callbacks work on a device.
 - No physical Android device has been tested by this code change yet.
