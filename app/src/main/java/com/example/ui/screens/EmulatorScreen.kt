@@ -125,7 +125,9 @@ fun EmulatorScreen(
         if (isNdsGame) {
             val runtime = LibretroRuntime(
                 frontendLibrary = File(context.applicationInfo.nativeLibraryDir, "libretroforge_libretro.so"),
-                coreSpec = checkNotNull(LibretroCoreSpec.forSystem(RetroSystem.NDS))
+                coreSpec = checkNotNull(LibretroCoreSpec.forSystem(RetroSystem.NDS)),
+                systemDirectory = File(context.filesDir, "retroforge/system"),
+                saveDirectory = File(context.filesDir, "retroforge/saves")
             )
             try {
                 withContext(Dispatchers.IO) {
