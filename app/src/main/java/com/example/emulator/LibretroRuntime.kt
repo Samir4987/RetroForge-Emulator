@@ -90,6 +90,10 @@ class LibretroRuntime(
     }
 
     /** Pushes current controls before advancing one emulated frame. */
+    @Synchronized fun setVideoFrameEnabled(enabled: Boolean) {
+        native?.nativeSetVideoFrameEnabled(enabled)
+    }
+
     @Synchronized fun runFrame(input: EmulatorInputState): Result<Unit> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before running frames." }
         val bridge = checkNotNull(native)
