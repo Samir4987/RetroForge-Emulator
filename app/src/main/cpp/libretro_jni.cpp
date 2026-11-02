@@ -47,6 +47,8 @@ size_t audio_write_frame = 0;
 size_t audio_queued_frames = 0;
 std::mutex audio_mutex;
 double core_sample_rate = 48000.0;
+std::string system_directory;
+std::string save_directory;
 constexpr unsigned MAX_VIDEO_DIMENSION = 4096;
 constexpr size_t MAX_VIDEO_PIXELS = 4U * 1024U * 1024U;
 
@@ -76,6 +78,16 @@ UnloadGame unload_game = nullptr;
 GetAvInfo get_av_info = nullptr;\nSerializeSize serialize_size = nullptr;\nSerialize serialize_state = nullptr;\nUnserialize unserialize_state = nullptr;
 
 bool environment(unsigned command, void* data) {
+    // RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY = 9.
+    if (command == 9 && data) {
+        *static_cast<const char**>(data) = system_directory.c_str();
+        return true;
+    }
+    // RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY = 31.
+    if (command == 31 && data) {
+        *static_cast<const char**>(data) = save_directory.c_str();
+        return true;
+    }
     // RETRO_ENVIRONMENT_SET_PIXEL_FORMAT = 10.
     if (command == 10 && data) {
         const auto format = *static_cast<PixelFormat*>(data);
@@ -232,14 +244,21 @@ void close_core() {
         audio_queued_frames = 0;
     }
     core_sample_rate = 48000.0;
+    system_directory.clear();
+    save_directory.clear();
     reset_symbols();
 }
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstring core_path, jstring rom_path) {
+Java_com_example_emulator_LibretroNative_nativeOpen(
+    JNIEnv* env, jobject, jstring core_path, jstring rom_path,
+    jstring system_path, jstring save_path
+) {
     close_core();
-    if (!core_path || !rom_path) return env->NewStringUTF("Core path and ROM path are required.");
+    if (!core_path || !rom_path || !system_path || !save_path) {
+        return env->NewStringUTF("Core, ROM, system and save paths are required.");
+    }
 
     const char* native_core_path = env->GetStringUTFChars(core_path, nullptr);
     if (!native_core_path) return env->NewStringUTF("Could not read core path.");
@@ -248,6 +267,23 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
         env->ReleaseStringUTFChars(core_path, native_core_path);
         return env->NewStringUTF("Could not read ROM path.");
     }
+    const char* native_system_path = env->GetStringUTFChars(system_path, nullptr);
+    if (!native_system_path) {
+        env->ReleaseStringUTFChars(core_path, native_core_path);
+        env->ReleaseStringUTFChars(rom_path, native_rom_path);
+        return env->NewStringUTF("Could not read system directory.");
+    }
+    const char* native_save_path = env->GetStringUTFChars(save_path, nullptr);
+    if (!native_save_path) {
+        env->ReleaseStringUTFChars(core_path, native_core_path);
+        env->ReleaseStringUTFChars(rom_path, native_rom_path);
+        env->ReleaseStringUTFChars(system_path, native_system_path);
+        return env->NewStringUTF("Could not read save directory.");
+    }
+    system_directory = native_system_path;
+    save_directory = native_save_path;
+    env->ReleaseStringUTFChars(system_path, native_system_path);
+    env->ReleaseStringUTFChars(save_path, native_save_path);
 
     core = dlopen(native_core_path, RTLD_NOW | RTLD_LOCAL);
     env->ReleaseStringUTFChars(core_path, native_core_path);
