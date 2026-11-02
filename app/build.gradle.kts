@@ -26,6 +26,8 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags += listOf("-std=c++17")
+                // Package the shared C++ runtime for native Libretro cores that depend on it.
+                arguments += listOf("-DANDROID_STL=c++_shared")
             }
         }
     }
