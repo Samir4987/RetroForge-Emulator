@@ -2,6 +2,7 @@
 #include <android/log.h>
 #include <dlfcn.h>
 #include <cstdint>
+#include <array>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -33,6 +34,10 @@ unsigned video_width = 0;
 unsigned video_height = 0;
 unsigned pixel_format = 0;
 bool video_frame_ready = false;
+std::array<bool, 16> joypad_buttons{};
+int16_t pointer_x = 0;
+int16_t pointer_y = 0;
+bool pointer_pressed = false;
 constexpr unsigned MAX_VIDEO_DIMENSION = 4096;
 constexpr size_t MAX_VIDEO_PIXELS = 16U * 1024U * 1024U;
 
@@ -134,7 +139,20 @@ void video_refresh(const void* data, unsigned width, unsigned height, size_t pit
 void audio_sample(int16_t, int16_t) {}
 size_t audio_sample_batch(const int16_t*, size_t frames) { return frames; }
 void input_poll() {}
-int16_t input_state(unsigned, unsigned, unsigned, unsigned) { return 0; }
+int16_t input_state(unsigned port, unsigned device, unsigned, unsigned id) {
+    if (port != 0) return 0;
+    // RETRO_DEVICE_JOYPAD = 1; IDs 0..15 are the standard Libretro buttons.
+    if (device == 1 && id < joypad_buttons.size()) {
+        return joypad_buttons[id] ? 1 : 0;
+    }
+    // RETRO_DEVICE_POINTER = 6; X, Y and PRESSED are IDs 0, 1 and 2.
+    if (device == 6) {
+        if (id == 0) return pointer_x;
+        if (id == 1) return pointer_y;
+        if (id == 2) return pointer_pressed ? 1 : 0;
+    }
+    return 0;
+}
 
 template <typename T> bool symbol(T& out, const char* name) {
     out = reinterpret_cast<T>(dlsym(core, name));
@@ -171,6 +189,10 @@ void close_core() {
     video_height = 0;
     pixel_format = 0;
     video_frame_ready = false;
+    joypad_buttons.fill(false);
+    pointer_x = 0;
+    pointer_y = 0;
+    pointer_pressed = false;
     reset_symbols();
 }
 }
@@ -271,6 +293,24 @@ Java_com_example_emulator_LibretroNative_nativeRunFrame(JNIEnv*, jobject) {
     if (!initialized || !game_loaded || !run_frame) return JNI_FALSE;
     run_frame();
     return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_emulator_LibretroNative_nativeSetJoypadButton(
+    JNIEnv*, jobject, jint button_id, jboolean pressed
+) {
+    if (button_id >= 0 && static_cast<size_t>(button_id) < joypad_buttons.size()) {
+        joypad_buttons[static_cast<size_t>(button_id)] = pressed == JNI_TRUE;
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_emulator_LibretroNative_nativeSetPointer(
+    JNIEnv*, jobject, jint x, jint y, jboolean pressed
+) {
+    pointer_x = static_cast<int16_t>(std::max(-32768, std::min(32767, x)));
+    pointer_y = static_cast<int16_t>(std::max(-32768, std::min(32767, y)));
+    pointer_pressed = pressed == JNI_TRUE;
 }
 
 extern "C" JNIEXPORT jintArray JNICALL
