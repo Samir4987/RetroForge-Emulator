@@ -1,6 +1,21 @@
 package com.example.emulator
 
 import java.io.File
+import kotlin.math.roundToInt
+
+/** Maps normalized Android touch coordinates to Libretro's signed pointer coordinate range. */
+data class LibretroPointerPosition(val x: Int, val y: Int) {
+    companion object {
+        fun fromNormalized(x: Float, y: Float): LibretroPointerPosition {
+            require(x.isFinite() && y.isFinite()) { "Pointer coordinates must be finite." }
+            fun convert(value: Float): Int =
+                ((value.coerceIn(0f, 1f) * 65535f) - 32768f)
+                    .roundToInt()
+                    .coerceIn(-32768, 32767)
+            return LibretroPointerPosition(convert(x), convert(y))
+        }
+    }
+}
 
 /** A copied, tightly packed ARGB_8888 frame emitted by the native Libretro video callback. */
 data class LibretroVideoFrame(
@@ -103,6 +118,20 @@ class LibretroRuntime(
             "Native video frame pixel data is incomplete or too large."
         }
         LibretroVideoFrame(width, height, packed.copyOfRange(2, packed.size))
+    }
+
+    /** Sets one standard Libretro joypad button (IDs 0 through 15) for player one. */
+    fun setJoypadButton(buttonId: Int, pressed: Boolean): Result<Unit> = runCatching {
+        check(state == State.GAME_LOADED) { "Load a ROM before sending input." }
+        require(buttonId in 0..15) { "Unsupported Libretro joypad button ID: $buttonId" }
+        checkNotNull(native).nativeSetJoypadButton(buttonId, pressed)
+    }
+
+    /** Sends the Nintendo DS stylus position and pressed state through RETRO_DEVICE_POINTER. */
+    fun setStylusPosition(x: Float, y: Float, pressed: Boolean): Result<Unit> = runCatching {
+        check(state == State.GAME_LOADED) { "Load a ROM before sending input." }
+        val pointer = LibretroPointerPosition.fromNormalized(x, y)
+        checkNotNull(native).nativeSetPointer(pointer.x, pointer.y, pressed)
     }
 
     /** Advances one core frame and captures video through the registered Libretro callback. */
