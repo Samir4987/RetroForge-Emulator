@@ -54,8 +54,8 @@ class LibretroVideoFrameTest {
         }
         val screens = LibretroVideoFrame(512, 192, pixels).toNintendoDsScreens()
 
-        assertEquals(192 * 1000 + 255, screens.top.argbPixels.last())
-        assertEquals(192 * 1000 + 511, screens.bottom.argbPixels.last())
+        assertEquals(191 * 1000 + 255, screens.top.argbPixels.last())
+        assertEquals(191 * 1000 + 511, screens.bottom.argbPixels.last())
     }
 
     @Test
