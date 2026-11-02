@@ -33,7 +33,7 @@ class EmulatorCore(
     @Volatile var isPaused = false
     var isRewinding = false
     var externalCoreActive = false
-    var fastForwardMultiplier = 1.0f // 1x, 1.5x, 2x, 4x, 8x
+    @Volatile var fastForwardMultiplier = 1.0f // 1x, 1.5x, 2x, 4x, 8x
     @Volatile var frameCounter = 0L
     @Volatile var playTimeSeconds = 0L
 
