@@ -159,6 +159,8 @@ class LibretroRuntime(
         var offset = 0
         while (!Thread.currentThread().isInterrupted && audioTrack === track) {
             if (audioPaused || track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                currentChunk = null
+                offset = 0
                 try {
                     Thread.sleep(5)
                 } catch (_: InterruptedException) {
