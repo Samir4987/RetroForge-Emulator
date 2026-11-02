@@ -7,6 +7,7 @@
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,13 @@ std::array<bool, 16> joypad_buttons{};
 int16_t pointer_x = 0;
 int16_t pointer_y = 0;
 bool pointer_pressed = false;
+constexpr size_t AUDIO_RING_CAPACITY_FRAMES = 65536;
+std::array<int16_t, AUDIO_RING_CAPACITY_FRAMES * 2U> audio_ring{};
+size_t audio_read_frame = 0;
+size_t audio_write_frame = 0;
+size_t audio_queued_frames = 0;
+std::mutex audio_mutex;
+double core_sample_rate = 48000.0;
 constexpr unsigned MAX_VIDEO_DIMENSION = 4096;
 constexpr size_t MAX_VIDEO_PIXELS = 16U * 1024U * 1024U;
 
@@ -137,8 +145,30 @@ void video_refresh(const void* data, unsigned width, unsigned height, size_t pit
     video_height = height;
     video_frame_ready = true;
 }
-void audio_sample(int16_t, int16_t) {}
-size_t audio_sample_batch(const int16_t*, size_t frames) { return frames; }
+void queue_audio_frame(int16_t left, int16_t right) {
+    std::lock_guard<std::mutex> lock(audio_mutex);
+    if (audio_queued_frames == AUDIO_RING_CAPACITY_FRAMES) {
+        audio_read_frame = (audio_read_frame + 1U) % AUDIO_RING_CAPACITY_FRAMES;
+        --audio_queued_frames;
+    }
+    const size_t offset = audio_write_frame * 2U;
+    audio_ring[offset] = left;
+    audio_ring[offset + 1U] = right;
+    audio_write_frame = (audio_write_frame + 1U) % AUDIO_RING_CAPACITY_FRAMES;
+    ++audio_queued_frames;
+}
+
+void audio_sample(int16_t left, int16_t right) {
+    queue_audio_frame(left, right);
+}
+
+size_t audio_sample_batch(const int16_t* data, size_t frames) {
+    if (!data) return 0;
+    for (size_t frame = 0; frame < frames; ++frame) {
+        queue_audio_frame(data[frame * 2U], data[frame * 2U + 1U]);
+    }
+    return frames;
+}
 void input_poll() {}
 int16_t input_state(unsigned port, unsigned device, unsigned, unsigned id) {
     if (port != 0) return 0;
@@ -194,6 +224,13 @@ void close_core() {
     pointer_x = 0;
     pointer_y = 0;
     pointer_pressed = false;
+    {
+        std::lock_guard<std::mutex> lock(audio_mutex);
+        audio_read_frame = 0;
+        audio_write_frame = 0;
+        audio_queued_frames = 0;
+    }
+    core_sample_rate = 48000.0;
     reset_symbols();
 }
 }
@@ -286,6 +323,9 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
     game_loaded = true;
     AvInfo av_info{};
     get_av_info(&av_info);
+    if (av_info.sample_rate >= 8000.0 && av_info.sample_rate <= 192000.0) {
+        core_sample_rate = av_info.sample_rate;
+    }
     return nullptr;
 }
 
@@ -312,6 +352,47 @@ Java_com_example_emulator_LibretroNative_nativeSetPointer(
     pointer_x = static_cast<int16_t>(std::max(-32768, std::min(32767, x)));
     pointer_y = static_cast<int16_t>(std::max(-32768, std::min(32767, y)));
     pointer_pressed = pressed == JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jdouble JNICALL
+Java_com_example_emulator_LibretroNative_nativeGetAudioSampleRate(JNIEnv*, jobject) {
+    return core_sample_rate;
+}
+
+extern "C" JNIEXPORT jshortArray JNICALL
+Java_com_example_emulator_LibretroNative_nativeReadAudioSamples(
+    JNIEnv* env, jobject, jint max_frames
+) {
+    if (max_frames <= 0) return nullptr;
+    const size_t requested = static_cast<size_t>(max_frames);
+    std::vector<jshort> samples;
+    size_t frames_to_read = 0;
+    {
+        std::lock_guard<std::mutex> lock(audio_mutex);
+        frames_to_read = std::min(requested, audio_queued_frames);
+        if (frames_to_read == 0) return nullptr;
+        try {
+            samples.resize(frames_to_read * 2U);
+        } catch (...) {
+            return nullptr;
+        }
+        for (size_t frame = 0; frame < frames_to_read; ++frame) {
+            const size_t offset = audio_read_frame * 2U;
+            samples[frame * 2U] = audio_ring[offset];
+            samples[frame * 2U + 1U] = audio_ring[offset + 1U];
+            audio_read_frame = (audio_read_frame + 1U) % AUDIO_RING_CAPACITY_FRAMES;
+        }
+        audio_queued_frames -= frames_to_read;
+    }
+
+    jshortArray result = env->NewShortArray(static_cast<jsize>(samples.size()));
+    if (!result) return nullptr;
+    env->SetShortArrayRegion(result, 0, static_cast<jsize>(samples.size()), samples.data());
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return nullptr;
+    }
+    return result;
 }
 
 extern "C" JNIEXPORT jintArray JNICALL
