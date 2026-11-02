@@ -525,6 +525,7 @@ fun EmulatorScreen(
                 gameTitle = game.title,
                 systemName = game.system,
                 existingSaves = saveStates,
+                isLocalOnly = isNdsGame,
                 onSaveToSlot = { slot ->
                     if (isNdsGame) {
                         saveNdsStateToSlot(
@@ -558,6 +559,7 @@ fun EmulatorScreen(
                         if (runtime == null) {
                             Toast.makeText(context, "Nintendo DS core is not running.", Toast.LENGTH_SHORT).show()
                         } else {
+                            val wasPaused = emulatorCore.isPaused
                             emulatorCore.isPaused = true
                             coroutineScope.launch {
                                 val restored = runCatching {
@@ -579,7 +581,7 @@ fun EmulatorScreen(
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }
-                                emulatorCore.isPaused = false
+                                emulatorCore.isPaused = wasPaused
                             }
                         }
                     } else {
