@@ -172,5 +172,7 @@ internal fun EmulatorInputState.toLibretroJoypadMask(): Int {
     set(9, buttonX)
     set(10, triggerL)
     set(11, triggerR)
+    // Libretro L2 is the conventional N64 Z-trigger mapping.
+    set(12, triggerZ)
     return mask
 }
