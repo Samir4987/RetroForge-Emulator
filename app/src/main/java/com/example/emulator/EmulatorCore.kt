@@ -70,6 +70,28 @@ class EmulatorCore(
         }
     }
 
+    /**
+     * Copies real Libretro Nintendo DS frames into the existing Android display bitmaps.
+     * The bitmaps are reused between frames to avoid allocating new image buffers every tick.
+     */
+    fun updateNativeNintendoDsFrames(top: LibretroVideoFrame, bottom: LibretroVideoFrame) {
+        require(currentSystem == RetroSystem.NDS) { "Native dual-screen frames require an NDS game." }
+        require(top.width == bottom.width && top.height == bottom.height) {
+            "Nintendo DS top and bottom frame dimensions must match."
+        }
+        if (screenBitmap.width != top.width || screenBitmap.height != top.height) {
+            screenBitmap = Bitmap.createBitmap(top.width, top.height, Bitmap.Config.ARGB_8888)
+        }
+        val bottomBitmap = bottomScreenBitmap
+        if (bottomBitmap == null || bottomBitmap.width != bottom.width || bottomBitmap.height != bottom.height) {
+            bottomScreenBitmap = Bitmap.createBitmap(bottom.width, bottom.height, Bitmap.Config.ARGB_8888)
+        }
+        screenBitmap.setPixels(top.argbPixels, 0, top.width, 0, 0, top.width, top.height)
+        bottomScreenBitmap?.setPixels(
+            bottom.argbPixels, 0, bottom.width, 0, 0, bottom.width, bottom.height
+        )
+    }
+
     fun loadGame(game: RetroGame) {
         currentGame = game
         currentSystem = RetroSystem.fromCode(game.system)
