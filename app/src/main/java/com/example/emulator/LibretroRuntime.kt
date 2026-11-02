@@ -242,7 +242,7 @@ class LibretroRuntime(
         check(checkNotNull(native).nativeUnserialize(stateBytes)) {
             "The Libretro core rejected this save state."
         }
-    }
+    } }
 
     /** Advances one core frame and captures video through the registered Libretro callback. */
     fun runFrame(): Result<Unit> = runCatching { synchronized(nativeLock) {
