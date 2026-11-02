@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import java.io.File
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -53,13 +55,18 @@ import com.example.data.model.SaveStateDto
 import com.example.data.repository.SaveStateRepository
 import com.example.emulator.ControllerSkin
 import com.example.emulator.EmulatorCore
+import com.example.emulator.LibretroCoreSpec
+import com.example.emulator.LibretroRuntime
+import com.example.emulator.RetroSystem
 import com.example.ui.components.RetroScreenView
 import com.example.ui.components.SaveSlotDialog
 import com.example.ui.components.VirtualController
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.example.data.local.RomLibraryRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
@@ -83,6 +90,16 @@ fun EmulatorScreen(
     var showSkinMenu by remember { mutableStateOf(false) }
 
     val saveStates = remember { mutableStateListOf<SaveStateDto>() }
+    val isNdsGame = game.system.equals(RetroSystem.NDS.code, ignoreCase = true)
+    var ndsRuntime by remember(game.id) { mutableStateOf<LibretroRuntime?>(null) }
+    var ndsLoadError by remember(game.id) { mutableStateOf<String?>(null) }
+
+    DisposableEffect(game.id) {
+        onDispose {
+            ndsRuntime?.close()
+            ndsRuntime = null
+        }
+    }
 
     // Intercept back button to return safely to Library
     BackHandler {
@@ -93,9 +110,43 @@ fun EmulatorScreen(
         onBackToLibrary()
     }
 
-    // Load game into core on launch
+    // Load the demo core for legacy systems; use the real Libretro core for Nintendo DS.
     LaunchedEffect(game) {
         emulatorCore.loadGame(game)
+        ndsRuntime = null
+        ndsLoadError = null
+
+        if (isNdsGame) {
+            val runtime = LibretroRuntime(
+                frontendLibrary = File(context.applicationInfo.nativeLibraryDir, "libretroforge_libretro.so"),
+                coreSpec = checkNotNull(LibretroCoreSpec.forSystem(RetroSystem.NDS))
+            )
+            try {
+                withContext(Dispatchers.IO) {
+                    val romBytes = game.romBytes
+                        ?: throw IllegalStateException("The selected Nintendo DS ROM could not be read from storage.")
+                    val extension = game.romFileName
+                        ?.substringAfterLast('.', "nds")
+                        ?.lowercase()
+                        ?.takeIf { it in checkNotNull(LibretroCoreSpec.forSystem(RetroSystem.NDS)).extensions }
+                        ?: "nds"
+                    val cacheName = "retroforge_nds_${Integer.toHexString(game.id.hashCode())}.$extension"
+                    val cachedRom = File(context.cacheDir, cacheName)
+                    if (!cachedRom.isFile || cachedRom.length() != romBytes.size.toLong()) {
+                        cachedRom.outputStream().use { output -> output.write(romBytes) }
+                    }
+                    runtime.loadRom(cachedRom).getOrThrow()
+                }
+                ndsRuntime = runtime
+                emulatorCore.isPaused = false
+            } catch (failure: Throwable) {
+                runtime.close()
+                ndsLoadError = failure.message ?: "Unknown Libretro loading error."
+                emulatorCore.isPaused = true
+                Toast.makeText(context, "NDS core failed: ${ndsLoadError}", Toast.LENGTH_LONG).show()
+            }
+        }
+
         // Load cloud saves if logged in
         if (Firebase.auth.currentUser != null && saveStateRepository != null) {
             try {
@@ -108,13 +159,48 @@ fun EmulatorScreen(
         }
     }
 
-    // High performance frame loop. Experimental multipliers are best-effort
-    // and remain limited by device and emulator-core performance.
+    // Native NDS frames run off the UI thread; other systems retain their existing core loop.
     var frameTicker by remember { mutableStateOf(0L) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(game.id, isNdsGame, ndsRuntime) {
         var nextFrameDeadlineNs = System.nanoTime()
         while (true) {
-            emulatorCore.tick()
+            if (!isNdsGame) {
+                emulatorCore.tick()
+            } else {
+                val runtime = ndsRuntime
+                if (runtime != null && !emulatorCore.isPaused) {
+                    val inputSnapshot = emulatorCore.inputState.copy()
+                    val result = runCatching {
+                        withContext(Dispatchers.Default) {
+                            runtime.updateInput(inputSnapshot).getOrThrow()
+                            runtime.runFrame().getOrThrow()
+                            runtime.readVideoFrame().getOrThrow()
+                        }
+                    }
+                    result.onFailure { failure ->
+                        ndsLoadError = failure.message ?: "Nintendo DS frame processing failed."
+                        emulatorCore.isPaused = true
+                        Toast.makeText(context, "NDS runtime stopped: ${ndsLoadError}", Toast.LENGTH_LONG).show()
+                    }
+                    result.getOrNull()?.let { frame ->
+                        if (frame != null) {
+                            runCatching {
+                                frame.toNintendoDsScreens()
+                            }.onSuccess { screens ->
+                                emulatorCore.updateNativeNintendoDsFrames(screens.top, screens.bottom)
+                                emulatorCore.frameCounter += 1L
+                                if (emulatorCore.frameCounter % 60L == 0L) {
+                                    emulatorCore.playTimeSeconds += 1L
+                                }
+                            }.onFailure { failure ->
+                                ndsLoadError = failure.message ?: "Unsupported Nintendo DS frame layout."
+                                emulatorCore.isPaused = true
+                                Toast.makeText(context, ndsLoadError, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                }
+            }
             frameTicker = emulatorCore.frameCounter
 
             val speed = emulatorCore.fastForwardMultiplier.toDouble().coerceIn(1.0, 1000.0)
@@ -124,7 +210,6 @@ fun EmulatorScreen(
             if (remainingNs >= 1_000_000L) {
                 delay((remainingNs / 1_000_000L).coerceAtLeast(1L))
             } else {
-                // Yield instead of blocking the UI thread at sub-millisecond targets.
                 if (remainingNs < 0L) nextFrameDeadlineNs = System.nanoTime()
                 kotlinx.coroutines.yield()
             }
