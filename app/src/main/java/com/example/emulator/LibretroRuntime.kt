@@ -54,6 +54,7 @@ class LibretroRuntime(
 
     private var native: LibretroNative? = null
     private var audioOutput: LibretroAudioOutput? = null
+    private var videoTransferBuffer = IntArray(2)
     private val coreFile: File
         get() = File(frontendLibrary.parentFile, coreSpec.libraryFileName)
 
@@ -122,18 +123,29 @@ class LibretroRuntime(
      */
     fun readVideoFrame(): Result<LibretroVideoFrame?> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before reading video frames." }
-        val packed = native?.nativeGetVideoFrame() ?: return@runCatching null
-        require(packed.size >= 2) { "Native video frame header is incomplete." }
-        val width = packed[0]
-        val height = packed[1]
+        val bridge = checkNotNull(native)
+        var requiredSize = bridge.nativeCopyVideoFrame(videoTransferBuffer)
+        if (requiredSize == 0) return@runCatching null
+        require(requiredSize in 3..(16 * 1024 * 1024 + 2)) {
+            "Native video frame size is invalid or too large."
+        }
+        if (videoTransferBuffer.size < requiredSize) {
+            videoTransferBuffer = IntArray(requiredSize)
+            requiredSize = bridge.nativeCopyVideoFrame(videoTransferBuffer)
+        }
+        require(requiredSize >= 3 && requiredSize <= videoTransferBuffer.size) {
+            "Native video frame transfer was incomplete."
+        }
+        val width = videoTransferBuffer[0]
+        val height = videoTransferBuffer[1]
         require(width in 1..4096 && height in 1..4096) {
             "Native video frame dimensions are invalid."
         }
         val expectedPixels = width.toLong() * height.toLong()
-        require(expectedPixels <= 16L * 1024L * 1024L && expectedPixels == packed.size - 2L) {
+        require(expectedPixels <= 16L * 1024L * 1024L && expectedPixels == requiredSize - 2L) {
             "Native video frame pixel data is incomplete or too large."
         }
-        LibretroVideoFrame(width, height, packed.copyOfRange(2, packed.size))
+        LibretroVideoFrame(width, height, videoTransferBuffer.copyOfRange(2, requiredSize))
     }
 
     fun setJoypadButton(button: LibretroJoypadButton, pressed: Boolean): Result<Unit> =
@@ -166,6 +178,7 @@ class LibretroRuntime(
         audioOutput = null
         native?.nativeClose()
         native = null
+        videoTransferBuffer = IntArray(2)
         state = State.CLOSED
     }
 }
