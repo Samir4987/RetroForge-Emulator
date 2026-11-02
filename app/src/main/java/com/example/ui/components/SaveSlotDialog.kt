@@ -55,6 +55,7 @@ fun SaveSlotDialog(
     gameTitle: String,
     systemName: String,
     existingSaves: List<SaveStateDto>,
+    isLocalOnly: Boolean = false,
     onSaveToSlot: (slot: Long) -> Unit,
     onLoadFromSlot: (dto: SaveStateDto) -> Unit,
     onDeleteSlot: (saveId: String) -> Unit,
@@ -98,7 +99,7 @@ fun SaveSlotDialog(
                         shape = RoundedCornerShape(6.dp)
                     ) {
                         Text(
-                            text = "CLOUD SYNC",
+                            text = if (isLocalOnly) "LOCAL ONLY" else "CLOUD SYNC",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF80D8FF),
