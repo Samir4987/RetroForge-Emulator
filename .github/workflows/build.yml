@@ -1,4 +1,3 @@
-
 name: Build Android APK
 
 on:
@@ -29,6 +28,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Set up Node.js for Firebase Emulator Suite
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
 
       - name: Install Android SDK
         uses: android-actions/setup-android@v4
@@ -68,8 +75,8 @@ jobs:
           mkdir wrapper-project
           cd wrapper-project
 
-          printf 'rootProject.name = "wrapper-bootstrap"\n' > settings.gradle
-          printf '// Temporary wrapper bootstrap project\n' > build.gradle
+          printf 'rootProject.name = "wrapper-bootstrap"\\n' > settings.gradle
+          printf '// Temporary wrapper bootstrap project\\n' > build.gradle
 
           "../gradle-${GRADLE_VERSION}/bin/gradle" wrapper \
             --gradle-version "$GRADLE_VERSION" \
@@ -150,11 +157,14 @@ jobs:
             app/build/generated/res/google-services \
             2>/dev/null || true
 
-      - name: Run unit tests
+      - name: Run unit and Firebase emulator tests
         shell: bash
         run: |
           set -euxo pipefail
-          ./gradlew --no-daemon :app:testDebugUnitTest
+          firebase emulators:exec \
+            --project demo-no-project \
+            --only auth,firestore \
+            "./gradlew --no-daemon :app:testDebugUnitTest"
 
       - name: Build debug APK
         shell: bash
