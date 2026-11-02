@@ -77,8 +77,8 @@ fun LibretroVideoFrame.toNintendoDsScreens(): LibretroDualScreenFrame {
  * Boundary between the Android UI and the Libretro JNI frontend.
  *
  * A successful ROM load means the native core accepted the ROM. Video frames,
- * stereo PCM and controller/stylus input are exposed through this runtime;
- * save-state support and presentation in the main emulator screen remain separate work.
+ * stereo PCM, controller/stylus input and serialized save states are exposed
+ * through this runtime. The Android screen owns frame presentation and lifecycle.
  */
 class LibretroRuntime(
     private val frontendLibrary: File,
