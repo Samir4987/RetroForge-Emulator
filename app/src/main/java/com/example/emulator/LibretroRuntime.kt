@@ -6,7 +6,6 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import java.io.File
 import java.nio.ByteBuffer
-import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 
 /**
@@ -24,7 +23,7 @@ class LibretroRuntime(
 
     private var native: LibretroNative? = null
     private var audioTrack: AudioTrack? = null
-    private val audioQueue = ArrayBlockingQueue<ShortArray>(16)
+    private val audioQueue = BoundedPcmQueue(capacityChunks = 16)
     @Volatile private var audioPaused = false
     @Volatile private var audioWorker: Thread? = null
     private val coreFile: File
@@ -151,10 +150,7 @@ class LibretroRuntime(
      */
     override fun onNativeAudioSamples(interleavedStereoPcm: ShortArray) {
         if (interleavedStereoPcm.isEmpty() || audioTrack == null || audioPaused) return
-        if (!audioQueue.offer(interleavedStereoPcm)) {
-            audioQueue.poll()
-            audioQueue.offer(interleavedStereoPcm)
-        }
+        audioQueue.offerLatest(interleavedStereoPcm)
     }
 
     private fun pumpAudio(track: AudioTrack) {
