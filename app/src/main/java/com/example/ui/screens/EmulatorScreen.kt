@@ -179,8 +179,17 @@ fun EmulatorScreen(
                 )
                 runtime.onFrame = { top, bottom -> emulatorCore.updateExternalFrame(top, bottom) }
                 val result = runCatching {
-                    romFile.writeBytes(romBytes)
-                    runtime.loadRom(romFile).getOrThrow()
+                    withContext(Dispatchers.IO) {
+                        if (!romFile.isFile || romFile.length() != romBytes.size.toLong()) {
+                            val temporaryRom = File(context.cacheDir, "${romFile.name}.tmp")
+                            temporaryRom.outputStream().use { output -> output.write(romBytes) }
+                            if (!temporaryRom.renameTo(romFile)) {
+                                temporaryRom.copyTo(romFile, overwrite = true)
+                                temporaryRom.delete()
+                            }
+                        }
+                        runtime.loadRom(romFile).getOrThrow()
+                    }
                 }
                 if (result.isSuccess) {
                     ndsRuntime = runtime
