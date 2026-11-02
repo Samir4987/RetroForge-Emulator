@@ -6,7 +6,7 @@ package com.example.emulator
  * binary, screen presentation wiring and device testing.
  */
 internal class LibretroNative {
-    external fun nativeOpen(corePath: String, romPath: String): String?
+    external fun nativeOpen(corePath: String, romPath: String, systemPath: String, savePath: String): String?
     external fun nativeRunFrame(): Boolean
     /** Copies [width, height, ARGB pixels...] into a reusable array; returns the required array size. */
     external fun nativeCopyVideoFrame(destination: IntArray): Int
