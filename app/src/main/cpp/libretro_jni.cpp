@@ -153,7 +153,7 @@ void destroy_egl_context() {
     hw_callback = {};
 }
 
-bool create_egl_context(unsigned context_type) {
+bool create_egl_context(unsigned context_type, bool depth, bool stencil) {
     if (context_type != 2 && context_type != 4) return false; // GLES2 / GLES3 only.
     if (egl_context != EGL_NO_CONTEXT) return false;
     egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -162,9 +162,15 @@ bool create_egl_context(unsigned context_type) {
         return false;
     }
     const EGLint renderable = context_type == 4 ? 0x0040 : EGL_OPENGL_ES2_BIT;
+    // Honor the depth/stencil buffers requested by the core. GLideN64 uses
+    // depth testing extensively; a color-only pbuffer can compile and load the
+    // core yet produce a blank or corrupted frame at runtime.
     const EGLint config_attributes[] = {
         EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE, renderable,
-        EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_NONE
+        EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
+        EGL_DEPTH_SIZE, depth ? 24 : 0,
+        EGL_STENCIL_SIZE, stencil ? 8 : 0,
+        EGL_NONE
     };
     EGLConfig config = nullptr;
     EGLint count = 0;
@@ -229,7 +235,7 @@ bool environment(unsigned command, void* data) {
     // RETRO_ENVIRONMENT_SET_HW_RENDER = 14.
     if (command == 14 && data) {
         auto* requested = static_cast<HwRenderCallback*>(data);
-        if (!create_egl_context(requested->context_type)) return false;
+        if (!create_egl_context(requested->context_type, requested->depth, requested->stencil)) return false;
         hw_callback = *requested;
         requested->get_current_framebuffer = current_framebuffer;
         requested->get_proc_address = resolve_gl_proc;
