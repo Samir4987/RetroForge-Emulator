@@ -58,6 +58,7 @@ import com.example.emulator.EmulatorCore
 import com.example.emulator.LibretroCoreSpec
 import com.example.emulator.LibretroRuntime
 import com.example.emulator.RetroSystem
+import com.example.emulator.toNintendoDsScreens
 import com.example.ui.components.RetroScreenView
 import com.example.ui.components.SaveSlotDialog
 import com.example.ui.components.VirtualController
@@ -133,7 +134,12 @@ fun EmulatorScreen(
                     val cacheName = "retroforge_nds_${Integer.toHexString(game.id.hashCode())}.$extension"
                     val cachedRom = File(context.cacheDir, cacheName)
                     if (!cachedRom.isFile || cachedRom.length() != romBytes.size.toLong()) {
-                        cachedRom.outputStream().use { output -> output.write(romBytes) }
+                        val temporaryRom = File(context.cacheDir, "$cacheName.tmp")
+                        temporaryRom.outputStream().use { output -> output.write(romBytes) }
+                        if (!temporaryRom.renameTo(cachedRom)) {
+                            temporaryRom.copyTo(cachedRom, overwrite = true)
+                            temporaryRom.delete()
+                        }
                     }
                     runtime.loadRom(cachedRom).getOrThrow()
                 }
@@ -195,7 +201,7 @@ fun EmulatorScreen(
                             }.onFailure { failure ->
                                 ndsLoadError = failure.message ?: "Unsupported Nintendo DS frame layout."
                                 emulatorCore.isPaused = true
-                                Toast.makeText(context, ndsLoadError, Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, ndsLoadError ?: "Unsupported Nintendo DS frame layout.", Toast.LENGTH_LONG).show()
                             }
                         }
                     }
