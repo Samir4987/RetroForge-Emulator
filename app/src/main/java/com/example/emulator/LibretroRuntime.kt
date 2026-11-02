@@ -42,8 +42,9 @@ data class LibretroVideoFrame(
 /**
  * Boundary between the Android UI and the Libretro JNI frontend.
  *
- * A successful ROM load means the native core accepted the ROM; it does not
- * by itself mean video, audio, input, saves, or UI presentation are complete.
+ * A successful ROM load means the native core accepted the ROM. Video frames,
+ * stereo PCM and controller/stylus input are exposed through this runtime;
+ * save-state support and presentation in the main emulator screen remain separate work.
  */
 class LibretroRuntime(
     private val frontendLibrary: File,
