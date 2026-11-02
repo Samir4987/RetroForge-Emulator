@@ -13,7 +13,7 @@ internal class LibretroNative {
     external fun nativeSetJoypadButton(buttonId: Int, pressed: Boolean)
     external fun nativeSetPointer(x: Int, y: Int, pressed: Boolean)
     external fun nativeGetAudioSampleRate(): Double
-    external fun nativeReadAudioSamples(maxFrames: Int): ShortArray?
+    external fun nativeCopyAudioSamples(destination: ShortArray): Int
     external fun nativeSerialize(): ByteArray?
     external fun nativeUnserialize(state: ByteArray): Boolean
     external fun nativeClose()
