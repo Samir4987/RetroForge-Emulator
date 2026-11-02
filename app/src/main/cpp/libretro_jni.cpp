@@ -232,6 +232,7 @@ void reset_symbols() {
     set_environment = nullptr; set_video = nullptr; set_audio = nullptr; set_audio_batch = nullptr;
     set_input_poll = nullptr; set_input_state = nullptr; core_init = nullptr; core_deinit = nullptr;
     get_system_info = nullptr; load_game = nullptr; run_frame = nullptr; unload_game = nullptr; get_av_info = nullptr;
+    get_api_version = nullptr;
     serialize_size = nullptr; serialize_state = nullptr; unserialize_state = nullptr;
 }
 void close_core(JNIEnv* env = nullptr) {
