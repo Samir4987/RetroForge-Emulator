@@ -190,7 +190,7 @@ private fun SlotItemCard(
                     )
                 } else {
                     Text(
-                        text = "EMPTY",
+                        text = if (existingSave != null) "SAVED" else "EMPTY",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.Gray,
