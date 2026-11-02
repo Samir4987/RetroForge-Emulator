@@ -93,6 +93,8 @@ class LibretroRuntime(
     private var audioOutput: LibretroAudioOutput? = null
     private var videoTransferBuffer = IntArray(2)
     private val audioTransferBuffer = ShortArray(8_192)
+    private val ndsTopPixels = IntArray(256 * 192)
+    private val ndsBottomPixels = IntArray(256 * 192)
     private val coreFile: File
         get() = File(frontendLibrary.parentFile, coreSpec.libraryFileName)
 
@@ -201,6 +203,55 @@ class LibretroRuntime(
         }
         LibretroVideoFrame(width, height, videoTransferBuffer.copyOfRange(2, requiredSize))
     } }
+
+    /**
+     * Copies the most recent Nintendo DS frame into reusable top/bottom pixel arrays.
+     * Returned arrays are reused on the next call; consume them before advancing another frame.
+     */
+    fun readNintendoDsScreens(): Result<LibretroDualScreenFrame?> = runCatching {
+        synchronized(nativeLock) {
+            check(state == State.GAME_LOADED) { "Load a ROM before reading video frames." }
+            val bridge = checkNotNull(native)
+            var requiredSize = bridge.nativeCopyVideoFrame(videoTransferBuffer)
+            if (requiredSize == 0) return@runCatching null
+            require(requiredSize in 3..(4 * 1024 * 1024 + 2)) {
+                "Native video frame size is invalid or too large."
+            }
+            if (videoTransferBuffer.size < requiredSize) {
+                videoTransferBuffer = IntArray(requiredSize)
+                requiredSize = bridge.nativeCopyVideoFrame(videoTransferBuffer)
+            }
+            require(requiredSize >= 3 && requiredSize <= videoTransferBuffer.size) {
+                "Native video frame transfer was incomplete."
+            }
+            val width = videoTransferBuffer[0]
+            val height = videoTransferBuffer[1]
+            when {
+                width == 256 && height == 384 && requiredSize == 256 * 384 + 2 -> {
+                    System.arraycopy(videoTransferBuffer, 2, ndsTopPixels, 0, ndsTopPixels.size)
+                    System.arraycopy(
+                        videoTransferBuffer, 2 + ndsTopPixels.size,
+                        ndsBottomPixels, 0, ndsBottomPixels.size
+                    )
+                }
+                width == 512 && height == 192 && requiredSize == 512 * 192 + 2 -> {
+                    for (y in 0 until 192) {
+                        val sourceOffset = 2 + y * 512
+                        val targetOffset = y * 256
+                        System.arraycopy(videoTransferBuffer, sourceOffset, ndsTopPixels, targetOffset, 256)
+                        System.arraycopy(videoTransferBuffer, sourceOffset + 256, ndsBottomPixels, targetOffset, 256)
+                    }
+                }
+                else -> throw IllegalArgumentException(
+                    "Expected a 256x384 stacked or 512x192 side-by-side Nintendo DS frame, got ${width}x${height}."
+                )
+            }
+            LibretroDualScreenFrame(
+                top = LibretroVideoFrame(256, 192, ndsTopPixels),
+                bottom = LibretroVideoFrame(256, 192, ndsBottomPixels)
+            )
+        }
+    }
 
     fun setJoypadButton(button: LibretroJoypadButton, pressed: Boolean): Result<Unit> =
         setJoypadButton(button.id, pressed)
