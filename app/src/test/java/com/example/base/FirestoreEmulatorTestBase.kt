@@ -5,7 +5,6 @@ import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.MemoryCacheSettings
@@ -21,7 +20,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 
 @RunWith(RobolectricTestRunner::class)
-@Config(manifest = Config.NONE)
+@Config(manifest = Config.NONE, sdk = [35])
 @LooperMode(LooperMode.Mode.INSTRUMENTATION_TEST)
 abstract class FirestoreEmulatorTestBase {
 
@@ -36,29 +35,43 @@ abstract class FirestoreEmulatorTestBase {
     databaseId = if (resId != 0) context.getString(resId) else "ai-studio-android-retrofor-3406fd5c-9026-4054-b4cc-3cb29757e3c1"
 
     val app = if (FirebaseApp.getApps(context).isEmpty()) {
-      val newApp = FirebaseApp.initializeApp(
+      FirebaseApp.initializeApp(
         context,
         FirebaseOptions.Builder()
-          .setApplicationId("com.aistudio.retroforge.gkqwnx")
+          // Firebase Auth validates the Firebase App ID format even when all
+          // network traffic is routed to the local Auth emulator. Reuse the
+          // generated Google Services values instead of passing the Android
+          // package name as an App ID.
+          .setApplicationId(
+            context.getString(
+              context.resources.getIdentifier("google_app_id", "string", context.packageName)
+            )
+          )
           .setProjectId(PROJECT_ID)
-          .setApiKey("fake-api-key-for-emulator")
+          .setApiKey(
+            context.getString(
+              context.resources.getIdentifier("google_api_key", "string", context.packageName)
+            )
+          )
           .build()
       )
-      val newFirestore = FirebaseFirestore.getInstance(newApp, databaseId)
-      newFirestore.useEmulator(EMULATOR_HOST, FIRESTORE_PORT)
-      newFirestore.firestoreSettings = FirebaseFirestoreSettings.Builder()
-        .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
-        .build()
-
-      val newAuth = FirebaseAuth.getInstance(newApp)
-      newAuth.useEmulator(EMULATOR_HOST, AUTH_PORT)
-      newApp
     } else {
       FirebaseApp.getInstance()
     }
 
+    // Robolectric can retain the default FirebaseApp and its component singletons
+    // between test methods. Firestore rejects useEmulator()/settings changes after
+    // the first operation, so configure both SDK clients exactly once per test JVM.
     firestore = FirebaseFirestore.getInstance(app, databaseId)
     auth = FirebaseAuth.getInstance(app)
+    if (!emulatorsConfigured) {
+      firestore.useEmulator(EMULATOR_HOST, FIRESTORE_PORT)
+      firestore.firestoreSettings = FirebaseFirestoreSettings.Builder()
+        .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
+        .build()
+      auth.useEmulator(EMULATOR_HOST, AUTH_PORT)
+      emulatorsConfigured = true
+    }
   }
 
   @After
@@ -70,7 +83,7 @@ abstract class FirestoreEmulatorTestBase {
     withTimeout(AUTH_TIMEOUT_MS) {
       val result = try {
         auth.signInWithEmailAndPassword(email, DEFAULT_PASSWORD).await()
-      } catch (unused: FirebaseAuthInvalidUserException) {
+      } catch (unused: com.google.firebase.auth.FirebaseAuthInvalidUserException) {
         auth.createUserWithEmailAndPassword(email, DEFAULT_PASSWORD).await()
       }
       checkNotNull(result.user?.uid) { "User auth failed" }
@@ -84,5 +97,6 @@ abstract class FirestoreEmulatorTestBase {
     const val PROJECT_ID = "demo-no-project"
     const val DEFAULT_PASSWORD = "password123"
     const val AUTH_TIMEOUT_MS = 5000L
+    private var emulatorsConfigured = false
   }
 }

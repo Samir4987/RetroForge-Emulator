@@ -1,5 +1,7 @@
 #include <jni.h>
 #include <android/log.h>
+#include <EGL/egl.h>
+#include <GLES2/gl2.h>
 #include <dlfcn.h>
 #include <cstdint>
 #include <atomic>
@@ -22,6 +24,23 @@ using retro_audio_sample_t = void (*)(int16_t, int16_t);
 using retro_audio_sample_batch_t = size_t (*)(const int16_t*, size_t);
 using retro_input_poll_t = void (*)();
 using retro_input_state_t = int16_t (*)(unsigned, unsigned, unsigned, unsigned);
+using retro_hw_proc_address_t = void* (*)(const char*);
+using retro_hw_framebuffer_t = uintptr_t (*)();
+
+struct HwRenderCallback {
+    unsigned context_type;
+    void (*context_reset)();
+    retro_hw_framebuffer_t get_current_framebuffer;
+    retro_hw_proc_address_t get_proc_address;
+    bool depth;
+    bool stencil;
+    bool bottom_left_origin;
+    unsigned version_major;
+    unsigned version_minor;
+    bool cache_context;
+    void (*context_destroy)();
+    bool debug_context;
+};
 
 struct GameInfo { const char* path; const void* data; size_t size; const char* meta; };
 struct SystemInfo { const char* name; const char* version; const char* extensions; bool need_fullpath; bool block_extract; };
@@ -33,11 +52,19 @@ bool initialized = false;
 bool game_loaded = false;
 std::vector<uint8_t> rom_data;
 std::mutex video_mutex;
+std::mutex core_mutex;
+EGLDisplay egl_display = EGL_NO_DISPLAY;
+EGLContext egl_context = EGL_NO_CONTEXT;
+EGLSurface egl_surface = EGL_NO_SURFACE;
+HwRenderCallback hw_callback{};
+bool hardware_rendering = false;
 std::vector<uint32_t> video_pixels;
 unsigned video_width = 0;
 unsigned video_height = 0;
 unsigned pixel_format = 0;
 std::atomic<uint16_t> joypad_mask{0};
+std::atomic<int16_t> analog_left_x{0}, analog_left_y{0};
+std::atomic<int16_t> analog_right_x{0}, analog_right_y{0};
 constexpr size_t kAudioCapacityFrames = 16384;
 std::array<int16_t, kAudioCapacityFrames * 2> audio_ring{};
 size_t audio_read_frame = 0;
@@ -88,7 +115,134 @@ RunFrame run_frame = nullptr;
 UnloadGame unload_game = nullptr;
 GetAvInfo get_av_info = nullptr;
 
+uintptr_t current_framebuffer() { return 0; }
+
+void* resolve_gl_proc(const char* name) {
+    if (!name) return nullptr;
+    void* proc = reinterpret_cast<void*>(eglGetProcAddress(name));
+    if (proc) return proc;
+    static void* gles = dlopen("libGLESv3.so", RTLD_NOW | RTLD_LOCAL);
+    if (!gles) gles = dlopen("libGLESv2.so", RTLD_NOW | RTLD_LOCAL);
+    return gles ? dlsym(gles, name) : nullptr;
+}
+
+bool make_egl_current() {
+    return egl_display != EGL_NO_DISPLAY && egl_context != EGL_NO_CONTEXT &&
+           egl_surface != EGL_NO_SURFACE &&
+           eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context) == EGL_TRUE;
+}
+
+void release_egl_current() {
+    if (egl_display != EGL_NO_DISPLAY) {
+        eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    }
+}
+
+void destroy_egl_context() {
+    if (egl_display == EGL_NO_DISPLAY) return;
+    if (egl_context != EGL_NO_CONTEXT) make_egl_current();
+    if (hardware_rendering && hw_callback.context_destroy) hw_callback.context_destroy();
+    release_egl_current();
+    if (egl_surface != EGL_NO_SURFACE) eglDestroySurface(egl_display, egl_surface);
+    if (egl_context != EGL_NO_CONTEXT) eglDestroyContext(egl_display, egl_context);
+    eglTerminate(egl_display);
+    egl_display = EGL_NO_DISPLAY;
+    egl_context = EGL_NO_CONTEXT;
+    egl_surface = EGL_NO_SURFACE;
+    hardware_rendering = false;
+    hw_callback = {};
+}
+
+bool create_egl_context(unsigned context_type, bool depth, bool stencil) {
+    if (context_type != 2 && context_type != 4) return false; // GLES2 / GLES3 only.
+    if (egl_context != EGL_NO_CONTEXT) return false;
+    egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (egl_display == EGL_NO_DISPLAY || !eglInitialize(egl_display, nullptr, nullptr)) {
+        egl_display = EGL_NO_DISPLAY;
+        return false;
+    }
+    const EGLint renderable = context_type == 4 ? 0x0040 : EGL_OPENGL_ES2_BIT;
+    // Honor the depth/stencil buffers requested by the core. GLideN64 uses
+    // depth testing extensively; a color-only pbuffer can compile and load the
+    // core yet produce a blank or corrupted frame at runtime.
+    const EGLint config_attributes[] = {
+        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE, renderable,
+        EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
+        EGL_DEPTH_SIZE, depth ? 24 : 0,
+        EGL_STENCIL_SIZE, stencil ? 8 : 0,
+        EGL_NONE
+    };
+    EGLConfig config = nullptr;
+    EGLint count = 0;
+    if (!eglChooseConfig(egl_display, config_attributes, &config, 1, &count) || count < 1) {
+        eglTerminate(egl_display);
+        egl_display = EGL_NO_DISPLAY;
+        return false;
+    }
+    // A fixed off-screen surface keeps the JNI frame path usable without an Android Surface.
+    // The core may render a smaller viewport into it.
+    const EGLint surface_attributes[] = {EGL_WIDTH, 1024, EGL_HEIGHT, 1024, EGL_NONE};
+    egl_surface = eglCreatePbufferSurface(egl_display, config, surface_attributes);
+    const EGLint context_attributes[] = {
+        EGL_CONTEXT_CLIENT_VERSION, context_type == 4 ? 3 : 2, EGL_NONE
+    };
+    if (egl_surface != EGL_NO_SURFACE) {
+        egl_context = eglCreateContext(egl_display, config, EGL_NO_CONTEXT, context_attributes);
+    }
+    if (egl_surface == EGL_NO_SURFACE || egl_context == EGL_NO_CONTEXT || !make_egl_current()) {
+        if (egl_surface != EGL_NO_SURFACE) eglDestroySurface(egl_display, egl_surface);
+        if (egl_context != EGL_NO_CONTEXT) eglDestroyContext(egl_display, egl_context);
+        eglTerminate(egl_display);
+        egl_display = EGL_NO_DISPLAY;
+        egl_surface = EGL_NO_SURFACE;
+        egl_context = EGL_NO_CONTEXT;
+        return false;
+    }
+    return true;
+}
+
+bool capture_hardware_frame(unsigned width, unsigned height) {
+    if (!make_egl_current() || width == 0 || height == 0 ||
+        width > kMaxVideoDimension || height > kMaxVideoDimension) return false;
+    try {
+        std::vector<uint8_t> rgba(static_cast<size_t>(width) * height * 4u);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels(0, 0, static_cast<GLsizei>(width), static_cast<GLsizei>(height),
+                     GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+        if (glGetError() != GL_NO_ERROR) return false;
+        std::vector<uint32_t> converted(static_cast<size_t>(width) * height);
+        for (unsigned y = 0; y < height; ++y) {
+            const unsigned source_y = hw_callback.bottom_left_origin ? y : height - 1u - y;
+            for (unsigned x = 0; x < width; ++x) {
+                const size_t src = (static_cast<size_t>(source_y) * width + x) * 4u;
+                converted[static_cast<size_t>(y) * width + x] =
+                    0xff000000u | (static_cast<uint32_t>(rgba[src]) << 16u) |
+                    (static_cast<uint32_t>(rgba[src + 1u]) << 8u) |
+                    static_cast<uint32_t>(rgba[src + 2u]);
+            }
+        }
+        std::lock_guard<std::mutex> lock(video_mutex);
+        video_pixels.swap(converted);
+        video_width = width;
+        video_height = height;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 bool environment(unsigned command, void* data) {
+    // RETRO_ENVIRONMENT_SET_HW_RENDER = 14.
+    if (command == 14 && data) {
+        auto* requested = static_cast<HwRenderCallback*>(data);
+        if (!create_egl_context(requested->context_type, requested->depth, requested->stencil)) return false;
+        hw_callback = *requested;
+        requested->get_current_framebuffer = current_framebuffer;
+        requested->get_proc_address = resolve_gl_proc;
+        hardware_rendering = true;
+        if (requested->context_reset) requested->context_reset();
+        return true;
+    }
     // RETRO_ENVIRONMENT_SET_PIXEL_FORMAT = 10.
     if (command == 10 && data) {
         const auto requested = *static_cast<PixelFormat*>(data);
@@ -106,6 +260,10 @@ bool environment(unsigned command, void* data) {
 // Libretro permits null data to mean "reuse the previous frame"; in that case
 // the last valid frame is deliberately retained.
 void video_refresh(const void* data, unsigned width, unsigned height, size_t pitch) {
+    if (hardware_rendering && data == reinterpret_cast<const void*>(static_cast<intptr_t>(-1))) {
+        capture_hardware_frame(width, height);
+        return;
+    }
     if (!data || width == 0 || height == 0 ||
         width > kMaxVideoDimension || height > kMaxVideoDimension ||
         static_cast<size_t>(width) > std::numeric_limits<size_t>::max() / 4) {
@@ -173,9 +331,26 @@ size_t audio_sample_batch(const int16_t* samples, size_t frames) {
 }
 void input_poll() {}
 int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
-    // RETRO_DEVICE_JOYPAD = 1; the standard joypad IDs occupy bits 0..15.
-    if (port != 0 || device != 1 || index != 0 || id >= 16) return 0;
-    return (joypad_mask.load(std::memory_order_relaxed) & (uint16_t{1} << id)) != 0 ? 1 : 0;
+    if (port != 0) return 0;
+
+    // RETRO_DEVICE_JOYPAD = 1; standard Libretro joypad IDs occupy bits 0..15.
+    if (device == 1 && index == 0 && id < 16) {
+        return (joypad_mask.load(std::memory_order_relaxed) & (uint16_t{1} << id)) != 0 ? 1 : 0;
+    }
+
+    // RETRO_DEVICE_ANALOG = 5; index 0 is left stick, index 1 is right stick.
+    // Axis IDs 0/1 are X/Y. The N64 C-buttons are supplied on the right stick.
+    if (device == 5 && id < 2) {
+        if (index == 0) {
+            return id == 0 ? analog_left_x.load(std::memory_order_relaxed)
+                           : analog_left_y.load(std::memory_order_relaxed);
+        }
+        if (index == 1) {
+            return id == 0 ? analog_right_x.load(std::memory_order_relaxed)
+                           : analog_right_y.load(std::memory_order_relaxed);
+        }
+    }
+    return 0;
 }
 
 template <typename T> bool symbol(T& out, const char* name) {
@@ -201,10 +376,30 @@ void reset_symbols() {
 }
 
 void close_core() {
+    // Libretro hardware-rendering cores may release GL objects from
+    // retro_unload_game()/retro_deinit(). Each frame deliberately detaches
+    // the pbuffer context before returning to Android, so rebind it here
+    // before invoking any core lifecycle callback.
+    const bool has_hardware_context =
+        hardware_rendering && egl_display != EGL_NO_DISPLAY &&
+        egl_context != EGL_NO_CONTEXT && egl_surface != EGL_NO_SURFACE;
+    const bool context_is_current = has_hardware_context && make_egl_current();
+
     if (game_loaded && unload_game) unload_game();
     game_loaded = false;
     if (initialized && core_deinit) core_deinit();
     initialized = false;
+
+    // If EGL rebinding failed, still tear down native resources safely; the
+    // context-destroy callback is only meaningful while a context is current.
+    if (hardware_rendering) {
+        if (context_is_current) {
+            destroy_egl_context();
+        } else {
+            hw_callback.context_destroy = nullptr;
+            destroy_egl_context();
+        }
+    }
     if (core) dlclose(core);
     core = nullptr;
     rom_data.clear();
@@ -215,6 +410,10 @@ void close_core() {
         video_height = 0;
         pixel_format = 0;
         joypad_mask.store(0, std::memory_order_relaxed);
+        analog_left_x.store(0, std::memory_order_relaxed);
+        analog_left_y.store(0, std::memory_order_relaxed);
+        analog_right_x.store(0, std::memory_order_relaxed);
+        analog_right_y.store(0, std::memory_order_relaxed);
     }
     {
         std::lock_guard<std::mutex> lock(audio_mutex);
@@ -229,6 +428,7 @@ void close_core() {
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstring core_path, jstring rom_path) {
+    std::lock_guard<std::mutex> core_lock(core_mutex);
     close_core();
     if (!core_path || !rom_path) return env->NewStringUTF("Core path and ROM path are required.");
 
@@ -324,13 +524,17 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject, jstrin
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_emulator_LibretroNative_nativeRunFrame(JNIEnv*, jobject) {
+    std::lock_guard<std::mutex> core_lock(core_mutex);
     if (!initialized || !game_loaded || !run_frame) return JNI_FALSE;
+    if (hardware_rendering && !make_egl_current()) return JNI_FALSE;
     run_frame();
+    if (hardware_rendering) release_egl_current();
     return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_emulator_LibretroNative_nativeClose(JNIEnv*, jobject) {
+    std::lock_guard<std::mutex> core_lock(core_mutex);
     close_core();
 }
 
@@ -367,6 +571,18 @@ Java_com_example_emulator_LibretroNative_nativeCopyVideoFrame(JNIEnv* env, jobje
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_emulator_LibretroNative_nativeSetJoypadState(JNIEnv*, jobject, jint mask) {
     joypad_mask.store(static_cast<uint16_t>(mask & 0xffff), std::memory_order_relaxed);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_emulator_LibretroNative_nativeSetAnalogState(
+        JNIEnv*, jobject, jint left_x, jint left_y, jint right_x, jint right_y) {
+    const auto clamp_axis = [](jint value) {
+        return static_cast<int16_t>(std::clamp(value, -32768, 32767));
+    };
+    analog_left_x.store(clamp_axis(left_x), std::memory_order_relaxed);
+    analog_left_y.store(clamp_axis(left_y), std::memory_order_relaxed);
+    analog_right_x.store(clamp_axis(right_x), std::memory_order_relaxed);
+    analog_right_y.store(clamp_axis(right_y), std::memory_order_relaxed);
 }
 
 extern "C" JNIEXPORT jdouble JNICALL

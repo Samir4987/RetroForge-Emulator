@@ -68,6 +68,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.yield
 import java.io.File
 
 @Composable
@@ -117,22 +118,27 @@ fun EmulatorScreen(
         }
     }
 
-    // Prefer the real GBA core only when both a ROM and a packaged core are available.
-    // Otherwise the existing demo/simulation remains the fallback.
+    // Prefer a real Libretro core for systems with a packaged core and imported ROM.
+    // N64 uses Mupen64Plus-Next; built-in demo titles and unavailable cores keep the simulation fallback.
     var frameTicker by remember { mutableStateOf(0L) }
     LaunchedEffect(game) {
         var runtime: LibretroRuntime? = null
         var temporaryRom: File? = null
         try {
             val romBytes = game.romBytes
-            val coreSpec = LibretroCoreSpec.forSystem(RetroSystem.GBA)
-            if (game.system.equals("GBA", ignoreCase = true) &&
-                romBytes != null && romBytes.isNotEmpty() && coreSpec != null
-            ) {
+            val gameSystem = RetroSystem.fromCode(game.system)
+            val coreSpec = LibretroCoreSpec.forSystem(gameSystem)
+            val supportsRuntimeCore = gameSystem == RetroSystem.GBA || gameSystem == RetroSystem.N64
+            if (supportsRuntimeCore && romBytes != null && romBytes.isNotEmpty() && coreSpec != null) {
                 val frontend = File(context.applicationInfo.nativeLibraryDir, "libretroforge_libretro.so")
                 val candidate = LibretroRuntime(frontend, coreSpec)
                 if (candidate.isAvailable) {
-                    val romFile = File.createTempFile("retroforge-gba-", ".gba", context.cacheDir)
+                    val requestedExtension = game.romFileName?.substringAfterLast('.', "")?.lowercase()
+                    val romExtension = requestedExtension?.takeIf { it in coreSpec.extensions }
+                        ?: if (gameSystem == RetroSystem.N64) "z64" else "gba"
+                    val romFile = File.createTempFile(
+                        "retroforge-${gameSystem.code.lowercase()}-", ".${romExtension}", context.cacheDir
+                    )
                     temporaryRom = romFile
                     romFile.writeBytes(romBytes)
                     if (candidate.loadRom(romFile).isSuccess) {
@@ -172,9 +178,15 @@ fun EmulatorScreen(
                     }
                 }
                 frameTicker = emulatorCore.frameCounter
-                // 60 FPS standard timing adjusted for fast forward.
-                val frameDelay = (16L / emulatorCore.fastForwardMultiplier.toLong().coerceAtLeast(1L)).coerceAtLeast(4L)
-                delay(frameDelay)
+                // Keep normal speed near 60 FPS. At high multipliers, stop imposing
+                // a frame delay and yield so the core can run as fast as the device allows.
+                val requestedSpeed = emulatorCore.fastForwardMultiplier.coerceIn(1f, 1000f)
+                val frameDelayMs = (1000.0 / (60.0 * requestedSpeed)).toLong()
+                if (frameDelayMs > 0L) {
+                    delay(frameDelayMs)
+                } else {
+                    yield()
+                }
             }
         } finally {
             runtime?.close()
@@ -265,7 +277,7 @@ fun EmulatorScreen(
                                 expanded = showSpeedMenu,
                                 onDismissRequest = { showSpeedMenu = false }
                             ) {
-                                listOf(1.0f, 1.5f, 2.0f, 4.0f, 8.0f).forEach { spd ->
+                                listOf(1.0f, 1.5f, 2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f, 1000.0f).forEach { spd ->
                                     DropdownMenuItem(
                                         text = { Text("${spd}x Speed") },
                                         onClick = {

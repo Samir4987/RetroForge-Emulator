@@ -91,6 +91,8 @@ class LibretroRuntime(
     fun updateInput(input: EmulatorInputState) {
         if (state != State.GAME_LOADED) return
         native?.nativeSetJoypadState(input.toLibretroJoypadMask())
+        val analog = input.toLibretroAnalogState()
+        native?.nativeSetAnalogState(analog.leftX, analog.leftY, analog.rightX, analog.rightY)
     }
 
     /** Copies queued stereo PCM samples into the supplied buffer for the audio output worker. */
@@ -131,6 +133,26 @@ class LibretroRuntime(
 }
 
 
+internal data class LibretroAnalogState(
+    val leftX: Int,
+    val leftY: Int,
+    val rightX: Int,
+    val rightY: Int
+)
+
+/** Maps normalized RetroForge stick values and N64 C-buttons to Libretro analog axes. */
+internal fun EmulatorInputState.toLibretroAnalogState(): LibretroAnalogState {
+    fun axis(value: Float): Int = (value.coerceIn(-1f, 1f) * 32767f).toInt()
+    val cX = (if (cRight) 1f else 0f) - (if (cLeft) 1f else 0f)
+    val cY = (if (cDown) 1f else 0f) - (if (cUp) 1f else 0f)
+    return LibretroAnalogState(
+        leftX = axis(stickX),
+        leftY = axis(-stickY),
+        rightX = axis(cX),
+        rightY = axis(cY)
+    )
+}
+
 /** Maps RetroForge's touch/controller state to standard Libretro joypad IDs. */
 internal fun EmulatorInputState.toLibretroJoypadMask(): Int {
     var mask = 0
@@ -150,5 +172,7 @@ internal fun EmulatorInputState.toLibretroJoypadMask(): Int {
     set(9, buttonX)
     set(10, triggerL)
     set(11, triggerR)
+    // Libretro L2 is the conventional N64 Z-trigger mapping.
+    set(12, triggerZ)
     return mask
 }

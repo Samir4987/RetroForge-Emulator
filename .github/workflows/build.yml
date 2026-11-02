@@ -4,8 +4,13 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master, feature/gba-core-integration]
+    branches: [main, master, feature/gba-core-integration, feature/n64-mupen64plus-integration]
   pull_request:
+
+# Push and pull_request events for the same branch should not build twice.
+concurrency:
+  group: android-build-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -13,7 +18,7 @@ permissions:
 jobs:
   build-android-apk:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
 
     env:
       ANDROID_HOME: /home/runner/android-sdk
@@ -152,11 +157,32 @@ jobs:
             app/build/generated/res/google-services \
             2>/dev/null || true
 
-      - name: Run unit tests
+      - name: Compile Android JNI frontend
         shell: bash
         run: |
           set -euxo pipefail
-          ./gradlew --no-daemon :app:testDebugUnitTest
+          ./gradlew --no-daemon :app:externalNativeBuildDebug
+
+      - name: Set up Node.js for Firebase Emulator Suite
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Firebase CLI
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm install --global firebase-tools@14.22.0
+          firebase --version
+
+      - name: Run unit tests with Firebase emulators
+        shell: bash
+        run: |
+          set -euxo pipefail
+          firebase emulators:exec \
+            --project demo-no-project \
+            --only auth,firestore \
+            "./gradlew --no-daemon :app:testDebugUnitTest"
 
       - name: Build and package pinned mGBA Libretro core
         shell: bash
@@ -165,11 +191,48 @@ jobs:
           export PATH="$ANDROID_SDK_ROOT/cmake/3.22.1/bin:$PATH"
           bash scripts/build-mgba-android.sh
 
+      - name: Build and package pinned Mupen64Plus-Next GLES3 cores
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # Match the app's four configured Android ABIs so N64 is available
+          # on 64-bit and 32-bit ARM/x86 devices and emulators.
+          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+            N64_ANDROID_ABI="$abi" bash scripts/build-mupen64plus-android.sh
+          done
+
       - name: Build debug APK
         shell: bash
         run: |
           set -euxo pipefail
           ./gradlew --no-daemon assembleDebug
+
+      - name: Verify APK contains every N64 core ABI
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import zipfile
+
+          apk = "app/build/outputs/apk/debug/app-debug.apk"
+          abis = ("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+          core_name = "mupen64plus_next_libretro_android.so"
+          with zipfile.ZipFile(apk) as archive:
+              entries = set(archive.namelist())
+              missing = [
+                  f"lib/{abi}/{core_name}"
+                  for abi in abis
+                  if f"lib/{abi}/{core_name}" not in entries
+              ]
+              if missing:
+                  raise SystemExit("N64 core missing from APK: " + ", ".join(missing))
+              for abi in abis:
+                  name = f"lib/{abi}/{core_name}"
+                  info = archive.getinfo(name)
+                  if info.file_size == 0:
+                      raise SystemExit(f"N64 core is empty in APK: {name}")
+                  print(f"Verified {name}: {info.file_size} bytes")
+          PY
 
       - name: Verify APK exists
         shell: bash
