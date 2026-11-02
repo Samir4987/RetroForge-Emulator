@@ -7,13 +7,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 import java.util.UUID
 
-@Ignore("Requires Firebase Auth and Firestore emulators; the unit-test CI job does not provision them")
 class SaveStateRepositoryRuleTest : FirestoreEmulatorTestBase() {
 
   @Test
@@ -60,7 +57,10 @@ class SaveStateRepositoryRuleTest : FirestoreEmulatorTestBase() {
       repository.getSaveState("some_state_id")
     }
     assertTrue("Unauthenticated calls must return failure", result.isFailure)
-    assertTrue("Failure exception should be IllegalStateException", result.exceptionOrNull() is IllegalStateException)
+    assertTrue(
+      "Failure exception should be IllegalStateException",
+      result.exceptionOrNull() is IllegalStateException
+    )
   }
 
   private companion object {
