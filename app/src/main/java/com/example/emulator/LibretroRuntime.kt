@@ -39,6 +39,40 @@ data class LibretroVideoFrame(
     }
 }
 
+/** A Nintendo DS frame pair split from a stacked or side-by-side Libretro frame. */
+data class LibretroDualScreenFrame(
+    val top: LibretroVideoFrame,
+    val bottom: LibretroVideoFrame
+)
+
+fun LibretroVideoFrame.toNintendoDsScreens(): LibretroDualScreenFrame {
+    return when {
+        width == 256 && height == 384 -> {
+            val screenPixels = 256 * 192
+            LibretroDualScreenFrame(
+                top = LibretroVideoFrame(256, 192, argbPixels.copyOfRange(0, screenPixels)),
+                bottom = LibretroVideoFrame(256, 192, argbPixels.copyOfRange(screenPixels, screenPixels * 2))
+            )
+        }
+        width == 512 && height == 192 -> {
+            val screenPixels = 256 * 192
+            val top = IntArray(screenPixels)
+            val bottom = IntArray(screenPixels)
+            for (y in 0 until 192) {
+                argbPixels.copyInto(top, y * 256, y * 512, y * 512 + 256)
+                argbPixels.copyInto(bottom, y * 256, y * 512 + 256, y * 512 + 512)
+            }
+            LibretroDualScreenFrame(
+                top = LibretroVideoFrame(256, 192, top),
+                bottom = LibretroVideoFrame(256, 192, bottom)
+            )
+        }
+        else -> throw IllegalArgumentException(
+            "Expected a 256x384 stacked or 512x192 side-by-side Nintendo DS frame, got ${width}x${height}."
+        )
+    }
+}
+
 /**
  * Boundary between the Android UI and the Libretro JNI frontend.
  *
@@ -163,6 +197,31 @@ class LibretroRuntime(
         check(state == State.GAME_LOADED) { "Load a ROM before sending input." }
         val pointer = LibretroPointerPosition.fromNormalized(x, y)
         checkNotNull(native).nativeSetPointer(pointer.x, pointer.y, pressed)
+    }
+
+    /** Applies the Android virtual controller and bottom-screen stylus state to the core. */
+    fun updateInput(input: EmulatorInputState): Result<Unit> = runCatching {
+        check(state == State.GAME_LOADED) { "Load a ROM before sending input." }
+        val bridge = checkNotNull(native)
+        val buttons = arrayOf(
+            LibretroJoypadButton.B to input.buttonB,
+            LibretroJoypadButton.Y to input.buttonY,
+            LibretroJoypadButton.SELECT to input.select,
+            LibretroJoypadButton.START to input.start,
+            LibretroJoypadButton.UP to input.dpadUp,
+            LibretroJoypadButton.DOWN to input.dpadDown,
+            LibretroJoypadButton.LEFT to input.dpadLeft,
+            LibretroJoypadButton.RIGHT to input.dpadRight,
+            LibretroJoypadButton.A to input.buttonA,
+            LibretroJoypadButton.X to input.buttonX,
+            LibretroJoypadButton.L to input.triggerL,
+            LibretroJoypadButton.R to input.triggerR
+        )
+        buttons.forEach { (button, pressed) ->
+            bridge.nativeSetJoypadButton(button.id, pressed)
+        }
+        val pointer = LibretroPointerPosition.fromNormalized(input.touchX, input.touchY)
+        bridge.nativeSetPointer(pointer.x, pointer.y, input.isTouching)
     }
 
     /** Advances one core frame and captures video through the registered Libretro callback. */
