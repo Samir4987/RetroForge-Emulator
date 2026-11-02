@@ -63,6 +63,7 @@ import com.example.data.model.SaveStateDto
 import com.example.data.repository.SaveStateRepository
 import com.example.emulator.ControllerSkin
 import com.example.emulator.EmulatorCore
+import com.example.emulator.FrameStepAccumulator
 import com.example.emulator.LibretroCoreSpec
 import com.example.emulator.LibretroRuntime
 import com.example.emulator.NdsSaveStateStore
@@ -242,19 +243,16 @@ fun EmulatorScreen(
     var frameTicker by remember { mutableStateOf(0L) }
     LaunchedEffect(ndsRuntime) {
         var nextFrameDeadlineNs = System.nanoTime()
-        var frameAccumulator = 0.0
+        val frameAccumulator = FrameStepAccumulator()
         while (true) {
             val runtime = ndsRuntime
             if (emulatorCore.isPaused) {
                 runtime?.setPaused(true)
             } else if (runtime != null) {
                 runtime.setPaused(false)
-                val speed = emulatorCore.fastForwardMultiplier.toDouble().coerceIn(1.0, 1000.0)
                 // Batch core frames at the native rate while refreshing Compose at ~60 Hz.
                 // Fractional speed values (for example 1.5x) are accumulated without drift.
-                frameAccumulator += speed
-                val steps = frameAccumulator.toInt().coerceAtLeast(1)
-                frameAccumulator -= steps
+                val steps = frameAccumulator.nextSteps(emulatorCore.fastForwardMultiplier)
                 val inputSnapshot = emulatorCore.inputState.copy()
                 val result = withContext(Dispatchers.Default) {
                     runCatching {
