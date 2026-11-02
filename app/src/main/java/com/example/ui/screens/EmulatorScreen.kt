@@ -99,7 +99,7 @@ fun EmulatorScreen(
     var activeSkin by remember { mutableStateOf(initialSkin) }
     var enableScanlines by remember { mutableStateOf(true) }
     var showSlotDialog by remember { mutableStateOf(false) }
-    var speedMultiplier by remember { mutableFloatStateOf(1.0f) }
+    var speedMultiplier by remember { mutableFloatStateOf(emulatorCore.fastForwardMultiplier) }
     var showSpeedMenu by remember { mutableStateOf(false) }
     var showSkinMenu by remember { mutableStateOf(false) }
 
