@@ -117,22 +117,27 @@ fun EmulatorScreen(
         }
     }
 
-    // Prefer the real GBA core only when both a ROM and a packaged core are available.
-    // Otherwise the existing demo/simulation remains the fallback.
+    // Prefer a real Libretro core for systems with a packaged core and imported ROM.
+    // N64 uses Mupen64Plus-Next; built-in demo titles and unavailable cores keep the simulation fallback.
     var frameTicker by remember { mutableStateOf(0L) }
     LaunchedEffect(game) {
         var runtime: LibretroRuntime? = null
         var temporaryRom: File? = null
         try {
             val romBytes = game.romBytes
-            val coreSpec = LibretroCoreSpec.forSystem(RetroSystem.GBA)
-            if (game.system.equals("GBA", ignoreCase = true) &&
-                romBytes != null && romBytes.isNotEmpty() && coreSpec != null
-            ) {
+            val gameSystem = RetroSystem.fromCode(game.system)
+            val coreSpec = LibretroCoreSpec.forSystem(gameSystem)
+            val supportsRuntimeCore = gameSystem == RetroSystem.GBA || gameSystem == RetroSystem.N64
+            if (supportsRuntimeCore && romBytes != null && romBytes.isNotEmpty() && coreSpec != null) {
                 val frontend = File(context.applicationInfo.nativeLibraryDir, "libretroforge_libretro.so")
                 val candidate = LibretroRuntime(frontend, coreSpec)
                 if (candidate.isAvailable) {
-                    val romFile = File.createTempFile("retroforge-gba-", ".gba", context.cacheDir)
+                    val requestedExtension = game.romFileName?.substringAfterLast('.', "")?.lowercase()
+                    val romExtension = requestedExtension?.takeIf { it in coreSpec.extensions }
+                        ?: if (gameSystem == RetroSystem.N64) "z64" else "gba"
+                    val romFile = File.createTempFile(
+                        "retroforge-${gameSystem.code.lowercase()}-", ".${romExtension}", context.cacheDir
+                    )
                     temporaryRom = romFile
                     romFile.writeBytes(romBytes)
                     if (candidate.loadRom(romFile).isSuccess) {
