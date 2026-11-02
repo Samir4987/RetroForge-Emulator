@@ -75,8 +75,8 @@ jobs:
           mkdir wrapper-project
           cd wrapper-project
 
-          printf '%s\\n' 'rootProject.name = "wrapper-bootstrap"' > settings.gradle
-          printf '%s\\n' '// Temporary wrapper bootstrap project' > build.gradle
+          printf '%s' 'rootProject.name = "wrapper-bootstrap"' > settings.gradle
+          printf '%s' '// Temporary wrapper bootstrap project' > build.gradle
 
           "../gradle-${GRADLE_VERSION}/bin/gradle" wrapper \
             --gradle-version "$GRADLE_VERSION" \
