@@ -2,6 +2,20 @@ package com.example.emulator
 
 import java.io.File
 
+/** A copied, tightly packed ARGB_8888 frame emitted by the native Libretro video callback. */
+data class LibretroVideoFrame(
+    val width: Int,
+    val height: Int,
+    val argbPixels: IntArray
+) {
+    init {
+        require(width > 0 && height > 0) { "Video frame dimensions must be positive." }
+        require(width.toLong() * height.toLong() == argbPixels.size.toLong()) {
+            "Video frame pixel count does not match its dimensions."
+        }
+    }
+}
+
 /**
  * Boundary between the Android UI and the Libretro JNI frontend.
  *
@@ -71,7 +85,27 @@ class LibretroRuntime(
         }
     }
 
-    /** Advances one core frame. Rendering/audio/input callbacks are not yet implemented. */
+    /**
+     * Returns the latest frame captured by the native video callback.
+     * Call after [runFrame]; null means the core has not emitted a frame yet.
+     */
+    fun readVideoFrame(): Result<LibretroVideoFrame?> = runCatching {
+        check(state == State.GAME_LOADED) { "Load a ROM before reading video frames." }
+        val packed = native?.nativeGetVideoFrame() ?: return@runCatching null
+        require(packed.size >= 2) { "Native video frame header is incomplete." }
+        val width = packed[0]
+        val height = packed[1]
+        require(width in 1..4096 && height in 1..4096) {
+            "Native video frame dimensions are invalid."
+        }
+        val expectedPixels = width.toLong() * height.toLong()
+        require(expectedPixels <= 16L * 1024L * 1024L && expectedPixels == packed.size - 2L) {
+            "Native video frame pixel data is incomplete or too large."
+        }
+        LibretroVideoFrame(width, height, packed.copyOfRange(2, packed.size))
+    }
+
+    /** Advances one core frame and captures video through the registered Libretro callback. */
     fun runFrame(): Result<Unit> = runCatching {
         check(state == State.GAME_LOADED) { "Load a ROM before running frames." }
         check(native?.nativeRunFrame() == true) { "Native Libretro core is not running." }
