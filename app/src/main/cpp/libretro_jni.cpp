@@ -48,7 +48,7 @@ size_t audio_queued_frames = 0;
 std::mutex audio_mutex;
 double core_sample_rate = 48000.0;
 constexpr unsigned MAX_VIDEO_DIMENSION = 4096;
-constexpr size_t MAX_VIDEO_PIXELS = 16U * 1024U * 1024U;
+constexpr size_t MAX_VIDEO_PIXELS = 4U * 1024U * 1024U;
 
 using SetEnvironment = void (*)(retro_environment_t);
 using SetVideo = void (*)(retro_video_refresh_t);
