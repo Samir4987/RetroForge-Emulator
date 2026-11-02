@@ -193,6 +193,7 @@ jobs:
             --tests com.example.emulator.NdsSaveStateStoreTest \
             --tests com.example.emulator.FrameStepAccumulatorTest \
             --tests com.example.emulator.BoundedPcmQueueTest
+            --tests com.example.emulator.LibretroNativeContractTest
 
       - name: Build debug APK
         shell: bash
