@@ -86,6 +86,7 @@ class LibretroRuntime(
 ) {
     enum class State { UNAVAILABLE, READY, GAME_LOADED, CLOSED }
 
+    private val nativeLock = Any()
     private var native: LibretroNative? = null
     private var audioOutput: LibretroAudioOutput? = null
     private var videoTransferBuffer = IntArray(2)
@@ -125,6 +126,7 @@ class LibretroRuntime(
         }
 
         return runCatching {
+            synchronized(nativeLock) {
             val bridge = native ?: LibretroNative().also { native = it }
             audioOutput?.close()
             audioOutput = null
@@ -148,6 +150,7 @@ class LibretroRuntime(
                 }
                 throw failure
             }
+            }
         }
     }
 
@@ -155,7 +158,7 @@ class LibretroRuntime(
      * Returns the latest frame captured by the native video callback.
      * Call after [runFrame]; null means the core has not emitted a frame yet.
      */
-    fun readVideoFrame(): Result<LibretroVideoFrame?> = runCatching {
+    fun readVideoFrame(): Result<LibretroVideoFrame?> = runCatching { synchronized(nativeLock) {
         check(state == State.GAME_LOADED) { "Load a ROM before reading video frames." }
         val bridge = checkNotNull(native)
         var requiredSize = bridge.nativeCopyVideoFrame(videoTransferBuffer)
@@ -180,27 +183,27 @@ class LibretroRuntime(
             "Native video frame pixel data is incomplete or too large."
         }
         LibretroVideoFrame(width, height, videoTransferBuffer.copyOfRange(2, requiredSize))
-    }
+    } }
 
     fun setJoypadButton(button: LibretroJoypadButton, pressed: Boolean): Result<Unit> =
         setJoypadButton(button.id, pressed)
 
     /** Sets one standard Libretro joypad button (IDs 0 through 15) for player one. */
-    fun setJoypadButton(buttonId: Int, pressed: Boolean): Result<Unit> = runCatching {
+    fun setJoypadButton(buttonId: Int, pressed: Boolean): Result<Unit> = runCatching { synchronized(nativeLock) {
         check(state == State.GAME_LOADED) { "Load a ROM before sending input." }
         require(buttonId in 0..15) { "Unsupported Libretro joypad button ID: $buttonId" }
         checkNotNull(native).nativeSetJoypadButton(buttonId, pressed)
-    }
+    } }
 
     /** Sends the Nintendo DS stylus position and pressed state through RETRO_DEVICE_POINTER. */
-    fun setStylusPosition(x: Float, y: Float, pressed: Boolean): Result<Unit> = runCatching {
+    fun setStylusPosition(x: Float, y: Float, pressed: Boolean): Result<Unit> = runCatching { synchronized(nativeLock) {
         check(state == State.GAME_LOADED) { "Load a ROM before sending input." }
         val pointer = LibretroPointerPosition.fromNormalized(x, y)
         checkNotNull(native).nativeSetPointer(pointer.x, pointer.y, pressed)
-    }
+    } }
 
     /** Applies the Android virtual controller and bottom-screen stylus state to the core. */
-    fun updateInput(input: EmulatorInputState): Result<Unit> = runCatching {
+    fun updateInput(input: EmulatorInputState): Result<Unit> = runCatching { synchronized(nativeLock) {
         check(state == State.GAME_LOADED) { "Load a ROM before sending input." }
         val bridge = checkNotNull(native)
         val buttons = arrayOf(
@@ -222,17 +225,17 @@ class LibretroRuntime(
         }
         val pointer = LibretroPointerPosition.fromNormalized(input.touchX, input.touchY)
         bridge.nativeSetPointer(pointer.x, pointer.y, input.isTouching)
-    }
+    } }
 
     /** Serializes the running core; null is reported as an unsupported-core failure. */
-    fun saveState(): Result<ByteArray> = runCatching {
+    fun saveState(): Result<ByteArray> = runCatching { synchronized(nativeLock) {
         check(state == State.GAME_LOADED) { "Load a ROM before saving state." }
         checkNotNull(native).nativeSerialize()
             ?: throw UnsupportedOperationException("The loaded Libretro core does not support save states.")
-    }
+    } }
 
     /** Restores a previously serialized core state. */
-    fun loadState(stateBytes: ByteArray): Result<Unit> = runCatching {
+    fun loadState(stateBytes: ByteArray): Result<Unit> = runCatching { synchronized(nativeLock) {
         check(state == State.GAME_LOADED) { "Load a ROM before restoring state." }
         require(stateBytes.isNotEmpty()) { "Save-state data is empty." }
         require(stateBytes.size <= 256 * 1024 * 1024) { "Save-state data exceeds the 256 MiB limit." }
@@ -242,14 +245,14 @@ class LibretroRuntime(
     }
 
     /** Advances one core frame and captures video through the registered Libretro callback. */
-    fun runFrame(): Result<Unit> = runCatching {
+    fun runFrame(): Result<Unit> = runCatching { synchronized(nativeLock) {
         check(state == State.GAME_LOADED) { "Load a ROM before running frames." }
         val bridge = checkNotNull(native)
         check(bridge.nativeRunFrame()) { "Native Libretro core is not running." }
         bridge.nativeReadAudioSamples(4_096)?.let { audioOutput?.write(it) }
-    }
+    } }
 
-    fun close() {
+    fun close() = synchronized(nativeLock) {
         audioOutput?.close()
         audioOutput = null
         native?.nativeClose()
