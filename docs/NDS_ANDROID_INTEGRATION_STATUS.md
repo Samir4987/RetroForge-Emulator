@@ -23,6 +23,8 @@ Do not merge to `main`; AI 1 handles merges.
 - Batches NDS core frames at the core's native refresh rate while limiting
   Compose redraws to the display cadence. Fractional speed multipliers such as
   1.5x are accumulated without drift for both NDS and simulation systems.
+- During fast-forward batches, intermediate native video conversion is skipped;
+  only the final frame is copied to Android bitmaps for presentation.
 - Stores NDS save states atomically in app-private files (up to 256 MiB) instead
   of putting large Base64 payloads into Firestore documents. Save slots are
   explicitly marked LOCAL ONLY in the UI.
@@ -54,7 +56,7 @@ Do not merge to `main`; AI 1 handles merges.
   native joypad-bitmask query fix. Run [#123](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41186170992)
   also passed on `0baa2affae73f2faac2de0f36c201b0f3e8ba881`.
 - CI run [#129](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41201246426) was cancelled during Android SDK installation before the NDS tests or APK build ran.
-- The new audio queue, local save-state store, ROM I/O and fractional fast-forward changes have not yet received a successful CI run. The workflow now includes `NdsSaveStateStoreTest`, `FrameStepAccumulatorTest` and `BoundedPcmQueueTest`.
+- The new audio queue, local save-state store, ROM I/O and fractional fast-forward changes have not yet received a successful CI run. The workflow now includes `NdsSaveStateStoreTest`, `FrameStepAccumulatorTest`, `BoundedPcmQueueTest` and dual-screen frame tests.
 - This CI result verifies compilation, packaging, and the listed unit tests; it
   does not prove that a ROM boots or that gameplay callbacks work on a device.
 - No physical Android device has been tested by this code change yet.
