@@ -163,7 +163,8 @@ jobs:
           ./gradlew --no-daemon :app:testDebugUnitTest \
             --tests "com.example.emulator.LibretroCoreSpecTest" \
             --tests "com.example.emulator.LibretroVideoFrameTest" \
-            --tests "com.example.emulator.LibretroPointerPositionTest"
+            --tests "com.example.emulator.LibretroPointerPositionTest" \
+            --tests "com.example.emulator.NdsSaveStateStoreTest"
 
       - name: Build debug APK
         shell: bash
