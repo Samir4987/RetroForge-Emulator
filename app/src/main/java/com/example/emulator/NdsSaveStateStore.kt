@@ -71,7 +71,7 @@ class NdsSaveStateStore(private val filesDir: File) {
         val directory = gameDirectory(gameId)
         val files = directory.listFiles() ?: return emptyList()
         return files.mapNotNull { file ->
-            val slot = Regex("""slot-(\\d+)\\.state""").matchEntire(file.name)
+            val slot = Regex("""slot-(\d+)\.state""").matchEntire(file.name)
                 ?.groupValues?.getOrNull(1)?.toIntOrNull()
                 ?: return@mapNotNull null
             if (slot !in 0..MAX_SLOT || !file.isFile || file.length() !in 1..MAX_STATE_BYTES) {
