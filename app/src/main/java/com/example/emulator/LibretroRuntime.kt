@@ -126,7 +126,7 @@ class LibretroRuntime(
         val bridge = checkNotNull(native)
         var requiredSize = bridge.nativeCopyVideoFrame(videoTransferBuffer)
         if (requiredSize == 0) return@runCatching null
-        require(requiredSize in 3..(16 * 1024 * 1024 + 2)) {
+        require(requiredSize in 3..(4 * 1024 * 1024 + 2)) {
             "Native video frame size is invalid or too large."
         }
         if (videoTransferBuffer.size < requiredSize) {
@@ -142,7 +142,7 @@ class LibretroRuntime(
             "Native video frame dimensions are invalid."
         }
         val expectedPixels = width.toLong() * height.toLong()
-        require(expectedPixels <= 16L * 1024L * 1024L && expectedPixels == requiredSize - 2L) {
+        require(expectedPixels <= 4L * 1024L * 1024L && expectedPixels == requiredSize - 2L) {
             "Native video frame pixel data is incomplete or too large."
         }
         LibretroVideoFrame(width, height, videoTransferBuffer.copyOfRange(2, requiredSize))
