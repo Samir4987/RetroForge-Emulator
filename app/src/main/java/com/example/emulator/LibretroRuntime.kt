@@ -82,7 +82,9 @@ fun LibretroVideoFrame.toNintendoDsScreens(): LibretroDualScreenFrame {
  */
 class LibretroRuntime(
     private val frontendLibrary: File,
-    private val coreSpec: LibretroCoreSpec
+    private val coreSpec: LibretroCoreSpec,
+    private val systemDirectory: File,
+    private val saveDirectory: File
 ) {
     enum class State { UNAVAILABLE, READY, GAME_LOADED, CLOSED }
 
@@ -131,7 +133,18 @@ class LibretroRuntime(
             audioOutput?.close()
             audioOutput = null
             try {
-                val error = bridge.nativeOpen(coreFile.absolutePath, rom.absolutePath)
+                check(systemDirectory.exists() || systemDirectory.mkdirs()) {
+                    "Could not create Libretro system directory: ${systemDirectory.absolutePath}"
+                }
+                check(saveDirectory.exists() || saveDirectory.mkdirs()) {
+                    "Could not create Libretro save directory: ${saveDirectory.absolutePath}"
+                }
+                val error = bridge.nativeOpen(
+                    coreFile.absolutePath,
+                    rom.absolutePath,
+                    systemDirectory.absolutePath,
+                    saveDirectory.absolutePath
+                )
                 if (error != null) throw IllegalStateException(error)
                 state = State.GAME_LOADED
                 val sampleRate = bridge.nativeGetAudioSampleRate().toInt().coerceIn(8_000, 192_000)
