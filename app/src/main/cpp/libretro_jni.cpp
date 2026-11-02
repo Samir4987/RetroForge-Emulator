@@ -2,6 +2,7 @@
 #include <android/log.h>
 #include <dlfcn.h>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -27,6 +28,13 @@ void* core = nullptr;
 bool initialized = false;
 bool game_loaded = false;
 std::vector<uint8_t> rom_data;
+std::vector<jint> video_pixels;
+unsigned video_width = 0;
+unsigned video_height = 0;
+unsigned pixel_format = 0;
+bool video_frame_ready = false;
+constexpr unsigned MAX_VIDEO_DIMENSION = 4096;
+constexpr size_t MAX_VIDEO_PIXELS = 16U * 1024U * 1024U;
 
 using SetEnvironment = void (*)(retro_environment_t);
 using SetVideo = void (*)(retro_video_refresh_t);
@@ -57,7 +65,9 @@ bool environment(unsigned command, void* data) {
     // RETRO_ENVIRONMENT_SET_PIXEL_FORMAT = 10.
     if (command == 10 && data) {
         const auto format = *static_cast<PixelFormat*>(data);
-        return format.format == 0 || format.format == 1 || format.format == 2;
+        if (format.format > 2) return false;
+        pixel_format = format.format;
+        return true;
     }
     return false;
 }
@@ -99,6 +109,11 @@ void close_core() {
     if (core) dlclose(core);
     core = nullptr;
     rom_data.clear();
+    video_pixels.clear();
+    video_width = 0;
+    video_height = 0;
+    pixel_format = 0;
+    video_frame_ready = false;
     reset_symbols();
 }
 }
