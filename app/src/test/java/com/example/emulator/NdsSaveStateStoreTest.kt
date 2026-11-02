@@ -1,17 +1,12 @@
 package com.example.emulator
 
-import java.io.File
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.rules.TemporaryFolder
 
 class NdsSaveStateStoreTest {
-    private val temporaryFolder = TemporaryFolder()
-
     @Test
     fun savesListsLoadsAndDeletesSlots() {
         val root = createTempDir(prefix = "nds-save-store-test-")
@@ -61,7 +56,7 @@ class NdsSaveStateStoreTest {
             assertThrows(IllegalArgumentException::class.java) {
                 store.save("game", 0, byteArrayOf())
             }
-            assertFalse(store.delete("game", 0).not())
+            assertTrue(store.delete("game", 0))
         } finally {
             root.deleteRecursively()
         }
