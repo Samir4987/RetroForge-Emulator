@@ -121,8 +121,15 @@ class EmulatorCore(
         screenBitmap = top
         bottomScreenBitmap = bottom
         externalCoreActive = true
-        frameCounter++
-        if (frameCounter % 60L == 0L) playTimeSeconds++
+    }
+
+    /** Account for every frame advanced by an external core, including skipped renders. */
+    fun recordExternalFrames(framesAdvanced: Int) {
+        if (framesAdvanced <= 0) return
+        val previousFrames = frameCounter
+        val updatedFrames = previousFrames + framesAdvanced.toLong()
+        frameCounter = updatedFrames
+        playTimeSeconds += (updatedFrames / 60L) - (previousFrames / 60L)
     }
 
     fun stopExternalCore() {
