@@ -6,6 +6,8 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import java.io.File
 import java.nio.ByteBuffer
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.TimeUnit
 
 /**
  * Android runtime boundary for a Libretro core. A loaded ROM is not considered playable
@@ -22,6 +24,9 @@ class LibretroRuntime(
 
     private var native: LibretroNative? = null
     private var audioTrack: AudioTrack? = null
+    private val audioQueue = ArrayBlockingQueue<ShortArray>(16)
+    @Volatile private var audioPaused = false
+    @Volatile private var audioWorker: Thread? = null
     private val coreFile: File
         get() = File(frontendLibrary.parentFile, coreSpec.libraryFileName)
 
@@ -96,10 +101,16 @@ class LibretroRuntime(
         runCatching { native?.nativeUnserialize(stateBytes) == true }.getOrDefault(false)
 
     @Synchronized fun setPaused(paused: Boolean) {
+        audioPaused = paused
+        if (paused) audioQueue.clear()
         val track = audioTrack ?: return
         runCatching {
-            if (paused && track.playState == AudioTrack.PLAYSTATE_PLAYING) track.pause()
-            else if (!paused && track.playState != AudioTrack.PLAYSTATE_PLAYING) track.play()
+            if (paused && track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                track.pause()
+                track.flush()
+            } else if (!paused && track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                track.play()
+            }
         }
     }
 
@@ -130,19 +141,59 @@ class LibretroRuntime(
         onFrame?.invoke(screenBitmap ?: return, bottomScreenBitmap)
     }
 
+    /**
+     * Native callbacks must never block the emulation thread on speaker playback.
+     * A bounded queue drops the oldest audio chunk during fast-forward rather than
+     * slowing the core or allowing unbounded latency to accumulate.
+     */
     override fun onNativeAudioSamples(interleavedStereoPcm: ShortArray) {
-        val track = audioTrack ?: return
-        if (interleavedStereoPcm.isEmpty()) return
+        if (interleavedStereoPcm.isEmpty() || audioTrack == null || audioPaused) return
+        if (!audioQueue.offer(interleavedStereoPcm)) {
+            audioQueue.poll()
+            audioQueue.offer(interleavedStereoPcm)
+        }
+    }
+
+    private fun pumpAudio(track: AudioTrack) {
+        var currentChunk: ShortArray? = null
         var offset = 0
-        while (offset < interleavedStereoPcm.size && audioTrack === track) {
-            val written = track.write(
-                interleavedStereoPcm,
-                offset,
-                interleavedStereoPcm.size - offset,
-                AudioTrack.WRITE_BLOCKING
-            )
-            if (written <= 0) break
-            offset += written
+        while (!Thread.currentThread().isInterrupted && audioTrack === track) {
+            if (audioPaused || track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                try {
+                    Thread.sleep(5)
+                } catch (_: InterruptedException) {
+                    break
+                }
+                continue
+            }
+
+            if (currentChunk == null) {
+                currentChunk = try {
+                    audioQueue.poll(100, TimeUnit.MILLISECONDS)
+                } catch (_: InterruptedException) {
+                    break
+                }
+                offset = 0
+                if (currentChunk == null) continue
+            }
+
+            val chunk = currentChunk ?: continue
+            val written = runCatching {
+                track.write(chunk, offset, chunk.size - offset, AudioTrack.WRITE_NON_BLOCKING)
+            }.getOrDefault(-1)
+            if (written > 0) {
+                offset += written
+                if (offset >= chunk.size) currentChunk = null
+            } else if (written < 0) {
+                currentChunk = null
+                offset = 0
+            } else {
+                try {
+                    Thread.sleep(2)
+                } catch (_: InterruptedException) {
+                    break
+                }
+            }
         }
     }
 
@@ -184,11 +235,24 @@ class LibretroRuntime(
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
         check(track.state == AudioTrack.STATE_INITIALIZED) { "Android could not initialize NDS audio output." }
+        audioQueue.clear()
+        audioPaused = false
         audioTrack = track
         track.play()
+        audioWorker = Thread({ pumpAudio(track) }, "RetroForge-Audio").apply {
+            isDaemon = true
+            start()
+        }
     }
 
     private fun stopAudio() {
+        audioPaused = true
+        audioQueue.clear()
+        audioWorker?.let { worker ->
+            worker.interrupt()
+            runCatching { worker.join(250) }
+        }
+        audioWorker = null
         audioTrack?.let { track ->
             runCatching { track.pause() }
             runCatching { track.flush() }
