@@ -57,6 +57,7 @@ import com.example.emulator.ControllerSkin
 import com.example.emulator.EmulatorCore
 import com.example.emulator.LibretroCoreSpec
 import com.example.emulator.LibretroRuntime
+import com.example.emulator.NdsSaveStateStore
 import com.example.emulator.RetroSystem
 import com.example.emulator.toNintendoDsScreens
 import com.example.ui.components.RetroScreenView
@@ -65,6 +66,9 @@ import com.example.ui.components.VirtualController
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.example.data.local.RomLibraryRepository
+import com.google.firebase.Timestamp
+import java.util.Date
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -91,6 +95,7 @@ fun EmulatorScreen(
     var showSkinMenu by remember { mutableStateOf(false) }
 
     val saveStates = remember { mutableStateListOf<SaveStateDto>() }
+    val ndsSaveStateStore = remember(context) { NdsSaveStateStore(context.filesDir) }
     val isNdsGame = game.system.equals(RetroSystem.NDS.code, ignoreCase = true)
     var ndsRuntime by remember(game.id) { mutableStateOf<LibretroRuntime?>(null) }
     var ndsLoadError by remember(game.id) { mutableStateOf<String?>(null) }
@@ -153,8 +158,32 @@ fun EmulatorScreen(
             }
         }
 
-        // Load cloud saves if logged in
-        if (Firebase.auth.currentUser != null && saveStateRepository != null) {
+        if (isNdsGame) {
+            val localEntries = withContext(Dispatchers.IO) {
+                ndsSaveStateStore.list(game.id)
+            }
+            saveStates.clear()
+            localEntries.forEach { entry ->
+                val timestamp = Timestamp(Date(entry.updatedAtMillis))
+                saveStates.add(
+                    SaveStateDto(
+                        id = "nds-slot-${entry.slot}",
+                        userId = "local_user",
+                        gameId = game.id,
+                        gameTitle = game.title,
+                        system = game.system,
+                        slot = entry.slot.toLong(),
+                        stateData = "",
+                        playTimeSeconds = emulatorCore.playTimeSeconds,
+                        createdAt = timestamp,
+                        updatedAt = timestamp
+                    )
+                )
+            }
+        }
+
+        // Large NDS state files stay local; only legacy systems use Firestore saves.
+        if (!isNdsGame && Firebase.auth.currentUser != null && saveStateRepository != null) {
             try {
                 val existing = saveStateRepository.observeSaveStates(game.id).firstOrNull()
                 if (existing != null) {
@@ -355,16 +384,31 @@ fun EmulatorScreen(
                         // Quick Save Slot 0 Button
                         IconButton(
                             onClick = {
-                                saveStateToSlot(
-                                    slot = 0,
-                                    game = game,
-                                    emulatorCore = emulatorCore,
-                                    saveStateRepository = saveStateRepository,
-                                    saveStates = saveStates,
-                                    onSaved = {
+                                if (isNdsGame) {
+                                    saveNdsStateToSlot(
+                                        slot = 0L,
+                                        game = game,
+                                        runtime = ndsRuntime,
+                                        store = ndsSaveStateStore,
+                                        emulatorCore = emulatorCore,
+                                        saveStates = saveStates,
+                                        coroutineScope = coroutineScope,
+                                        context = context
+                                    ) {
                                         Toast.makeText(context, "Quick Saved to Slot 1", Toast.LENGTH_SHORT).show()
                                     }
-                                )
+                                } else {
+                                    saveStateToSlot(
+                                        slot = 0,
+                                        game = game,
+                                        emulatorCore = emulatorCore,
+                                        saveStateRepository = saveStateRepository,
+                                        saveStates = saveStates,
+                                        onSaved = {
+                                            Toast.makeText(context, "Quick Saved to Slot 1", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
                             },
                             modifier = Modifier.testTag("button_quick_save")
                         ) {
@@ -482,34 +526,140 @@ fun EmulatorScreen(
                 systemName = game.system,
                 existingSaves = saveStates,
                 onSaveToSlot = { slot ->
-                    saveStateToSlot(
-                        slot = slot,
-                        game = game,
-                        emulatorCore = emulatorCore,
-                        saveStateRepository = saveStateRepository,
-                        saveStates = saveStates,
-                        onSaved = {
+                    if (isNdsGame) {
+                        saveNdsStateToSlot(
+                            slot = slot,
+                            game = game,
+                            runtime = ndsRuntime,
+                            store = ndsSaveStateStore,
+                            emulatorCore = emulatorCore,
+                            saveStates = saveStates,
+                            coroutineScope = coroutineScope,
+                            context = context
+                        ) {
                             Toast.makeText(context, "State saved to Slot ${slot + 1}", Toast.LENGTH_SHORT).show()
                         }
-                    )
+                    } else {
+                        saveStateToSlot(
+                            slot = slot,
+                            game = game,
+                            emulatorCore = emulatorCore,
+                            saveStateRepository = saveStateRepository,
+                            saveStates = saveStates,
+                            onSaved = {
+                                Toast.makeText(context, "State saved to Slot ${slot + 1}", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
                 },
                 onLoadFromSlot = { dto ->
-                    val success = emulatorCore.loadSaveStateBase64(dto.stateData)
-                    if (success) {
-                        Toast.makeText(context, "Loaded Slot ${dto.slot + 1}", Toast.LENGTH_SHORT).show()
-                        showSlotDialog = false
+                    if (isNdsGame) {
+                        val runtime = ndsRuntime
+                        if (runtime == null) {
+                            Toast.makeText(context, "Nintendo DS core is not running.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            emulatorCore.isPaused = true
+                            coroutineScope.launch {
+                                val restored = runCatching {
+                                    val bytes = withContext(Dispatchers.IO) {
+                                        ndsSaveStateStore.load(game.id, dto.slot.toInt())
+                                            ?: throw IllegalStateException("Save slot is empty.")
+                                    }
+                                    withContext(Dispatchers.Default) {
+                                        runtime.loadState(bytes).getOrThrow()
+                                    }
+                                }
+                                if (restored.isSuccess) {
+                                    Toast.makeText(context, "Loaded Slot ${dto.slot + 1}", Toast.LENGTH_SHORT).show()
+                                    showSlotDialog = false
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        restored.exceptionOrNull()?.message ?: "Failed to load state.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                                emulatorCore.isPaused = false
+                            }
+                        }
                     } else {
-                        Toast.makeText(context, "Failed to load state", Toast.LENGTH_SHORT).show()
+                        val success = emulatorCore.loadSaveStateBase64(dto.stateData)
+                        if (success) {
+                            Toast.makeText(context, "Loaded Slot ${dto.slot + 1}", Toast.LENGTH_SHORT).show()
+                            showSlotDialog = false
+                        } else {
+                            Toast.makeText(context, "Failed to load state", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 },
                 onDeleteSlot = { saveId ->
                     coroutineScope.launch {
-                        saveStateRepository?.deleteSaveState(saveId)
+                        if (isNdsGame) {
+                            saveId.substringAfterLast('-').toIntOrNull()?.let { slot ->
+                                withContext(Dispatchers.IO) { ndsSaveStateStore.delete(game.id, slot) }
+                            }
+                        } else {
+                            saveStateRepository?.deleteSaveState(saveId)
+                        }
                         saveStates.removeAll { it.id == saveId }
                     }
                 },
                 onDismiss = { showSlotDialog = false }
             )
+        }
+    }
+}
+
+private fun saveNdsStateToSlot(
+    slot: Long,
+    game: RetroGame,
+    runtime: LibretroRuntime?,
+    store: NdsSaveStateStore,
+    emulatorCore: EmulatorCore,
+    saveStates: MutableList<SaveStateDto>,
+    coroutineScope: CoroutineScope,
+    context: android.content.Context,
+    onSaved: () -> Unit
+) {
+    val activeRuntime = runtime
+    if (activeRuntime == null) {
+        Toast.makeText(context, "Nintendo DS core is not running.", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val wasPaused = emulatorCore.isPaused
+    emulatorCore.isPaused = true
+    coroutineScope.launch {
+        try {
+            val stateBytes = withContext(Dispatchers.Default) {
+                activeRuntime.saveState().getOrThrow()
+            }
+            val entry = withContext(Dispatchers.IO) {
+                store.save(game.id, slot.toInt(), stateBytes)
+            }
+            val timestamp = Timestamp(Date(entry.updatedAtMillis))
+            val saved = SaveStateDto(
+                id = "nds-slot-${entry.slot}",
+                userId = "local_user",
+                gameId = game.id,
+                gameTitle = game.title,
+                system = game.system,
+                slot = entry.slot.toLong(),
+                stateData = "",
+                playTimeSeconds = emulatorCore.playTimeSeconds,
+                createdAt = timestamp,
+                updatedAt = timestamp
+            )
+            val existingIndex = saveStates.indexOfFirst { it.slot == saved.slot }
+            if (existingIndex >= 0) saveStates[existingIndex] = saved else saveStates.add(saved)
+            onSaved()
+        } catch (failure: Throwable) {
+            Toast.makeText(
+                context,
+                failure.message ?: "Could not save Nintendo DS state.",
+                Toast.LENGTH_LONG
+            ).show()
+        } finally {
+            emulatorCore.isPaused = wasPaused
         }
     }
 }
