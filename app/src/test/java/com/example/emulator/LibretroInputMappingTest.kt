@@ -35,6 +35,12 @@ class LibretroInputMappingTest {
     }
 
     @Test
+    fun mapsN64ZTriggerToLibretroL2() {
+        val input = EmulatorInputState(triggerZ = true)
+        assertEquals(1 shl 12, input.toLibretroJoypadMask())
+    }
+
+    @Test
     fun mapsN64LeftStickAndCButtonsToLibretroAnalogAxes() {
         val input = EmulatorInputState(
             stickX = 0.5f,
