@@ -122,6 +122,9 @@ class LibretroRuntime(
         if (!rom.isFile || rom.length() == 0L) {
             return Result.failure(IllegalArgumentException("ROM file is missing or empty."))
         }
+        if (rom.length() > 512L * 1024L * 1024L) {
+            return Result.failure(IllegalArgumentException("ROM exceeds the 512 MiB safety limit."))
+        }
         val extension = rom.extension.lowercase()
         if (extension !in coreSpec.extensions) {
             return Result.failure(IllegalArgumentException("Unsupported ROM extension: .$extension"))
@@ -256,6 +259,14 @@ class LibretroRuntime(
             "The Libretro core rejected this save state."
         }
     } }
+
+    fun pauseAudio() = synchronized(nativeLock) {
+        audioOutput?.pause()
+    }
+
+    fun resumeAudio() = synchronized(nativeLock) {
+        if (state == State.GAME_LOADED) audioOutput?.resume()
+    }
 
     /** Advances one core frame and captures video through the registered Libretro callback. */
     fun runFrame(): Result<Unit> = runCatching { synchronized(nativeLock) {
