@@ -189,8 +189,9 @@ jobs:
         run: |
           set -euxo pipefail
           ./gradlew --no-daemon :app:testDebugUnitTest \
-  --tests com.example.emulator.LibretroNdsCoreSpecTest \
-  --tests com.example.emulator.NdsSaveStateStoreTest
+            --tests com.example.emulator.LibretroNdsCoreSpecTest \
+            --tests com.example.emulator.NdsSaveStateStoreTest \
+            --tests com.example.emulator.FrameStepAccumulatorTest
 
       - name: Build debug APK
         shell: bash
