@@ -156,6 +156,15 @@ jobs:
             app/build/generated/res/google-services \
             2>/dev/null || true
 
+      - name: Run NDS Libretro unit tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./gradlew --no-daemon :app:testDebugUnitTest \
+            --tests "com.example.emulator.LibretroCoreSpecTest" \
+            --tests "com.example.emulator.LibretroVideoFrameTest" \
+            --tests "com.example.emulator.LibretroPointerPositionTest"
+
       - name: Build debug APK
         shell: bash
         run: |
