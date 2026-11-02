@@ -15,10 +15,10 @@ Do not merge to `main`; AI 1 handles merges.
   PCM callbacks, joypad/pointer input, core option defaults, system/assets/save
   directory callbacks, Libretro API-version validation, and optional serialize/
   unserialize entry points. Native ROM, frame and save-state allocations are bounded.
-- Decouples native audio callbacks from speaker playback using a bounded PCM
-  queue and a dedicated non-blocking AudioTrack worker. Fast-forward no longer
-  waits for real-time speaker consumption; old audio chunks are dropped under
-  sustained overload rather than stalling emulation.
+- Decouples native audio callbacks from speaker playback using a tested bounded
+  PCM queue and a dedicated non-blocking AudioTrack worker. Fast-forward no
+  longer waits for real-time speaker consumption; old audio chunks are dropped
+  under sustained overload rather than stalling emulation.
 - Moves large ROM staging and native core initialization to an IO dispatcher.
 - Batches NDS core frames at the core's native refresh rate while limiting
   Compose redraws to the display cadence. Fractional speed multipliers such as
@@ -54,7 +54,7 @@ Do not merge to `main`; AI 1 handles merges.
   native joypad-bitmask query fix. Run [#123](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41186170992)
   also passed on `0baa2affae73f2faac2de0f36c201b0f3e8ba881`.
 - CI run [#129](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41201246426) was cancelled during Android SDK installation before the NDS tests or APK build ran.
-- The new audio queue, local save-state store, ROM I/O and fractional fast-forward changes have not yet received a successful CI run. The workflow now includes `NdsSaveStateStoreTest` and `FrameStepAccumulatorTest`.
+- The new audio queue, local save-state store, ROM I/O and fractional fast-forward changes have not yet received a successful CI run. The workflow now includes `NdsSaveStateStoreTest`, `FrameStepAccumulatorTest` and `BoundedPcmQueueTest`.
 - This CI result verifies compilation, packaging, and the listed unit tests; it
   does not prove that a ROM boots or that gameplay callbacks work on a device.
 - No physical Android device has been tested by this code change yet.
