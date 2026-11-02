@@ -153,6 +153,7 @@ fun EmulatorScreen(
         ndsRuntime?.close()
         ndsRuntime = null
         ndsStatus = null
+        saveStates.clear()
         emulatorCore.loadGame(game)
 
         if (emulatorCore.currentSystem == RetroSystem.NDS) {
