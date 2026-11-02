@@ -3,6 +3,14 @@ package com.example.emulator
 import java.io.File
 import kotlin.math.roundToInt
 
+/** Standard RETRO_DEVICE_ID_JOYPAD values used by Libretro cores. */
+enum class LibretroJoypadButton(val id: Int) {
+    B(0), Y(1), SELECT(2), START(3),
+    UP(4), DOWN(5), LEFT(6), RIGHT(7),
+    A(8), X(9), L(10), R(11),
+    L2(12), R2(13), L3(14), R3(15)
+}
+
 /** Maps normalized Android touch coordinates to Libretro's signed pointer coordinate range. */
 data class LibretroPointerPosition(val x: Int, val y: Int) {
     companion object {
@@ -119,6 +127,9 @@ class LibretroRuntime(
         }
         LibretroVideoFrame(width, height, packed.copyOfRange(2, packed.size))
     }
+
+    fun setJoypadButton(button: LibretroJoypadButton, pressed: Boolean): Result<Unit> =
+        setJoypadButton(button.id, pressed)
 
     /** Sets one standard Libretro joypad button (IDs 0 through 15) for player one. */
     fun setJoypadButton(buttonId: Int, pressed: Boolean): Result<Unit> = runCatching {
