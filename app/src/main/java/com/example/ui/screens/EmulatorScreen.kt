@@ -162,6 +162,8 @@ fun EmulatorScreen(
             val spec = LibretroCoreSpec.forSystem(RetroSystem.NDS)
             if (romBytes == null || romBytes.isEmpty()) {
                 ndsStatus = "No ROM data is available for real NDS emulation."
+            } else if (romBytes.size.toLong() > 512L * 1024L * 1024L) {
+                ndsStatus = "This ROM exceeds the 512 MiB safety limit."
             } else if (spec == null) {
                 ndsStatus = "No Nintendo DS core is configured."
             } else {
