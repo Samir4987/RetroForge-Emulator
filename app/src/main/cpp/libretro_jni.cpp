@@ -72,8 +72,65 @@ bool environment(unsigned command, void* data) {
     return false;
 }
 
-// Playback pipelines are intentionally placeholders until video/audio/input are connected.
-void video_refresh(const void*, unsigned, unsigned, size_t) {}
+// Convert the core's current pixel format into tightly packed Android ARGB_8888.
+void video_refresh(const void* data, unsigned width, unsigned height, size_t pitch) {
+    // Libretro permits null data to mean "reuse the previous frame".
+    if (!data) return;
+    if (width == 0 || height == 0 || width > MAX_VIDEO_DIMENSION ||
+        height > MAX_VIDEO_DIMENSION ||
+        static_cast<size_t>(width) * static_cast<size_t>(height) > MAX_VIDEO_PIXELS) {
+        LOGE("Ignoring invalid video frame dimensions: %u x %u", width, height);
+        return;
+    }
+
+    const size_t bytes_per_pixel = pixel_format == 1 ? 4U : 2U;
+    if (pitch < static_cast<size_t>(width) * bytes_per_pixel) {
+        LOGE("Ignoring video frame with invalid pitch.");
+        return;
+    }
+
+    try {
+        video_pixels.resize(static_cast<size_t>(width) * height);
+    } catch (...) {
+        LOGE("Could not allocate native video frame buffer.");
+        return;
+    }
+
+    const auto* source = static_cast<const uint8_t*>(data);
+    for (unsigned y = 0; y < height; ++y) {
+        const uint8_t* row = source + static_cast<size_t>(y) * pitch;
+        for (unsigned x = 0; x < width; ++x) {
+            uint8_t red, green, blue;
+            if (pixel_format == 1) {
+                uint32_t value = 0;
+                std::memcpy(&value, row + static_cast<size_t>(x) * 4U, sizeof(value));
+                red = static_cast<uint8_t>((value >> 16U) & 0xFFU);
+                green = static_cast<uint8_t>((value >> 8U) & 0xFFU);
+                blue = static_cast<uint8_t>(value & 0xFFU);
+            } else {
+                uint16_t value = 0;
+                std::memcpy(&value, row + static_cast<size_t>(x) * 2U, sizeof(value));
+                if (pixel_format == 2) { // RGB565
+                    red = static_cast<uint8_t>(((value >> 11U) & 0x1FU) * 255U / 31U);
+                    green = static_cast<uint8_t>(((value >> 5U) & 0x3FU) * 255U / 63U);
+                    blue = static_cast<uint8_t>((value & 0x1FU) * 255U / 31U);
+                } else { // 0RGB1555
+                    red = static_cast<uint8_t>(((value >> 10U) & 0x1FU) * 255U / 31U);
+                    green = static_cast<uint8_t>(((value >> 5U) & 0x1FU) * 255U / 31U);
+                    blue = static_cast<uint8_t>((value & 0x1FU) * 255U / 31U);
+                }
+            }
+            video_pixels[static_cast<size_t>(y) * width + x] =
+                static_cast<jint>(0xFF000000U |
+                    (static_cast<uint32_t>(red) << 16U) |
+                    (static_cast<uint32_t>(green) << 8U) |
+                    static_cast<uint32_t>(blue));
+        }
+    }
+    video_width = width;
+    video_height = height;
+    video_frame_ready = true;
+}
 void audio_sample(int16_t, int16_t) {}
 size_t audio_sample_batch(const int16_t*, size_t frames) { return frames; }
 void input_poll() {}
@@ -214,6 +271,31 @@ Java_com_example_emulator_LibretroNative_nativeRunFrame(JNIEnv*, jobject) {
     if (!initialized || !game_loaded || !run_frame) return JNI_FALSE;
     run_frame();
     return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_example_emulator_LibretroNative_nativeGetVideoFrame(JNIEnv* env, jobject) {
+    if (!video_frame_ready || video_width == 0 || video_height == 0) return nullptr;
+    const size_t pixel_count = static_cast<size_t>(video_width) * video_height;
+    if (pixel_count > MAX_VIDEO_PIXELS ||
+        pixel_count + 2U > static_cast<size_t>(std::numeric_limits<jsize>::max())) {
+        return nullptr;
+    }
+
+    jintArray result = env->NewIntArray(static_cast<jsize>(pixel_count + 2U));
+    if (!result) return nullptr;
+    const jint dimensions[2] = {
+        static_cast<jint>(video_width), static_cast<jint>(video_height)
+    };
+    env->SetIntArrayRegion(result, 0, 2, dimensions);
+    env->SetIntArrayRegion(
+        result, 2, static_cast<jsize>(pixel_count), video_pixels.data()
+    );
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return nullptr;
+    }
+    return result;
 }
 
 extern "C" JNIEXPORT void JNICALL
