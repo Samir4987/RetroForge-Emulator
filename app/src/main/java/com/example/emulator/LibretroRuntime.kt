@@ -274,23 +274,18 @@ class LibretroRuntime(
     fun updateInput(input: EmulatorInputState): Result<Unit> = runCatching { synchronized(nativeLock) {
         check(state == State.GAME_LOADED) { "Load a ROM before sending input." }
         val bridge = checkNotNull(native)
-        val buttons = arrayOf(
-            LibretroJoypadButton.B to input.buttonB,
-            LibretroJoypadButton.Y to input.buttonY,
-            LibretroJoypadButton.SELECT to input.select,
-            LibretroJoypadButton.START to input.start,
-            LibretroJoypadButton.UP to input.dpadUp,
-            LibretroJoypadButton.DOWN to input.dpadDown,
-            LibretroJoypadButton.LEFT to input.dpadLeft,
-            LibretroJoypadButton.RIGHT to input.dpadRight,
-            LibretroJoypadButton.A to input.buttonA,
-            LibretroJoypadButton.X to input.buttonX,
-            LibretroJoypadButton.L to input.triggerL,
-            LibretroJoypadButton.R to input.triggerR
-        )
-        buttons.forEach { (button, pressed) ->
-            bridge.nativeSetJoypadButton(button.id, pressed)
-        }
+        bridge.nativeSetJoypadButton(LibretroJoypadButton.B.id, input.buttonB)
+        bridge.nativeSetJoypadButton(LibretroJoypadButton.Y.id, input.buttonY)
+        bridge.nativeSetJoypadButton(LibretroJoypadButton.SELECT.id, input.select)
+        bridge.nativeSetJoypadButton(LibretroJoypadButton.START.id, input.start)
+        bridge.nativeSetJoypadButton(LibretroJoypadButton.UP.id, input.dpadUp)
+        bridge.nativeSetJoypadButton(LibretroJoypadButton.DOWN.id, input.dpadDown)
+        bridge.nativeSetJoypadButton(LibretroJoypadButton.LEFT.id, input.dpadLeft)
+        bridge.nativeSetJoypadButton(LibretroJoypadButton.RIGHT.id, input.dpadRight)
+        bridge.nativeSetJoypadButton(LibretroJoypadButton.A.id, input.buttonA)
+        bridge.nativeSetJoypadButton(LibretroJoypadButton.X.id, input.buttonX)
+        bridge.nativeSetJoypadButton(LibretroJoypadButton.L.id, input.triggerL)
+        bridge.nativeSetJoypadButton(LibretroJoypadButton.R.id, input.triggerR)
         val pointer = LibretroPointerPosition.fromNormalized(input.touchX, input.touchY)
         bridge.nativeSetPointer(pointer.x, pointer.y, input.isTouching)
     } }
