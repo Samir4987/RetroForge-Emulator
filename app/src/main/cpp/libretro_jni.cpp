@@ -28,6 +28,9 @@ struct SystemInfo { const char* name; const char* version; const char* extension
 struct AvInfo { unsigned base_width, base_height, max_width, max_height; float aspect_ratio; double fps, sample_rate; };
 struct PixelFormat { unsigned format; };
 
+constexpr size_t MAX_ROM_BYTES = 512U * 1024U * 1024U;
+constexpr size_t MAX_VIDEO_PIXELS = 4U * 1024U * 1024U;
+
 void* core = nullptr;
 bool initialized = false;
 bool game_loaded = false;
@@ -67,6 +70,7 @@ using LoadGame = bool (*)(const GameInfo*);
 using RunFrame = void (*)();
 using UnloadGame = void (*)();
 using GetAvInfo = void (*)(AvInfo*);
+using GetApiVersion = unsigned (*)();
 SetEnvironment set_environment = nullptr;
 SetVideo set_video = nullptr;
 SetAudio set_audio = nullptr;
@@ -79,6 +83,7 @@ LoadGame load_game = nullptr;
 RunFrame run_frame = nullptr;
 UnloadGame unload_game = nullptr;
 GetAvInfo get_av_info = nullptr;
+GetApiVersion get_api_version = nullptr;
 
 JNIEnv* callback_env(bool& attached) {
     attached = false;
@@ -143,8 +148,15 @@ void video_refresh(const void* data, unsigned width, unsigned height, size_t pit
     const size_t bpp = current_pixel_format == 1 ? 4 : 2;
     if (pitch < static_cast<size_t>(width) * bpp) return;
     size_t count = static_cast<size_t>(width) * height;
-    if (count > static_cast<size_t>(std::numeric_limits<jsize>::max()) / 4) return;
-    std::vector<uint32_t> pixels(count);
+    if (count > MAX_VIDEO_PIXELS ||
+        count > static_cast<size_t>(std::numeric_limits<jsize>::max()) / 4) return;
+    std::vector<uint32_t> pixels;
+    try {
+        pixels.resize(count);
+    } catch (...) {
+        LOGE("Could not allocate native video frame.");
+        return;
+    }
     const auto* src = static_cast<const uint8_t*>(data);
     for (unsigned y = 0; y < height; ++y) {
         const auto* row = src + static_cast<size_t>(y) * pitch;
@@ -305,11 +317,17 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject bridge,
         symbol(load_game, "retro_load_game") &&
         symbol(run_frame, "retro_run") &&
         symbol(unload_game, "retro_unload_game") &&
-        symbol(get_av_info, "retro_get_system_av_info");
+        symbol(get_av_info, "retro_get_system_av_info") &&
+        symbol(get_api_version, "retro_api_version");
     if (!ok) {
         close_core(env);
         env->ReleaseStringUTFChars(rom_path, native_rom_path);
         return env->NewStringUTF("Core is missing required Libretro API symbols.");
+    }
+    if (get_api_version() != 1U) {
+        env->ReleaseStringUTFChars(rom_path, native_rom_path);
+        close_core(env);
+        return env->NewStringUTF("Unsupported Libretro API version; expected version 1.");
     }
     serialize_size=reinterpret_cast<SerializeSize>(dlsym(core,"retro_serialize_size"));
     serialize_state=reinterpret_cast<Serialize>(dlsym(core,"retro_serialize"));
@@ -327,11 +345,17 @@ Java_com_example_emulator_LibretroNative_nativeOpen(JNIEnv* env, jobject bridge,
         }
         const std::streamoff length = input.tellg();
         if (length <= 0 || static_cast<unsigned long long>(length) >
-                static_cast<unsigned long long>(std::numeric_limits<size_t>::max())) {
+                static_cast<unsigned long long>(MAX_ROM_BYTES)) {
             env->ReleaseStringUTFChars(rom_path, native_rom_path); close_core(env);
-            return env->NewStringUTF("ROM file is empty or too large.");
+            return env->NewStringUTF("ROM file is empty or exceeds the 512 MiB safety limit.");
         }
-        rom_data.resize(static_cast<size_t>(length)); input.seekg(0, std::ios::beg);
+        try {
+            rom_data.resize(static_cast<size_t>(length));
+        } catch (...) {
+            env->ReleaseStringUTFChars(rom_path, native_rom_path); close_core(env);
+            return env->NewStringUTF("Not enough memory to load this ROM.");
+        }
+        input.seekg(0, std::ios::beg);
         if (!input.read(reinterpret_cast<char*>(rom_data.data()), length)) {
             env->ReleaseStringUTFChars(rom_path, native_rom_path); close_core(env);
             return env->NewStringUTF("Could not read complete ROM file.");
@@ -382,18 +406,27 @@ Java_com_example_emulator_LibretroNative_nativeSetInputState(JNIEnv*, jobject, j
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_example_emulator_LibretroNative_nativeSerialize(JNIEnv* env, jobject) {
     if(!game_loaded||!serialize_size||!serialize_state) return nullptr;
+    constexpr size_t MAX_SERIALIZED_STATE_BYTES = 256U * 1024U * 1024U;
     size_t size=serialize_size();
-    if(!size||size>64*1024*1024||size>static_cast<size_t>(std::numeric_limits<jsize>::max())) return nullptr;
-    std::vector<uint8_t> state(size); if(!serialize_state(state.data(),state.size())) return nullptr;
+    if(!size||size>MAX_SERIALIZED_STATE_BYTES||
+        size>static_cast<size_t>(std::numeric_limits<jsize>::max())) return nullptr;
+    std::vector<uint8_t> state;
+    try { state.resize(size); } catch (...) { return nullptr; }
+    if(!serialize_state(state.data(),state.size())) return nullptr;
     jbyteArray result=env->NewByteArray(static_cast<jsize>(size));
-    if(result) env->SetByteArrayRegion(result,0,static_cast<jsize>(size),reinterpret_cast<const jbyte*>(state.data()));
+    if(!result) return nullptr;
+    env->SetByteArrayRegion(result,0,static_cast<jsize>(size),reinterpret_cast<const jbyte*>(state.data()));
+    if(env->ExceptionCheck()) { env->ExceptionClear(); return nullptr; }
     return result;
 }
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_emulator_LibretroNative_nativeUnserialize(JNIEnv* env, jobject, jbyteArray state) {
     if(!game_loaded||!unserialize_state||!state) return JNI_FALSE;
-    jsize size=env->GetArrayLength(state); if(size<=0||size>64*1024*1024) return JNI_FALSE;
-    std::vector<uint8_t> bytes(static_cast<size_t>(size));
+    constexpr jsize MAX_SERIALIZED_STATE_BYTES = 256 * 1024 * 1024;
+    jsize size=env->GetArrayLength(state);
+    if(size<=0||size>MAX_SERIALIZED_STATE_BYTES) return JNI_FALSE;
+    std::vector<uint8_t> bytes;
+    try { bytes.resize(static_cast<size_t>(size)); } catch (...) { return JNI_FALSE; }
     env->GetByteArrayRegion(state,0,size,reinterpret_cast<jbyte*>(bytes.data()));
     if(env->ExceptionCheck()){env->ExceptionClear();return JNI_FALSE;}
     return unserialize_state(bytes.data(),bytes.size())?JNI_TRUE:JNI_FALSE;
