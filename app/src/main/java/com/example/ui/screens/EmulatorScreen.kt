@@ -412,9 +412,9 @@ fun EmulatorScreen(
                                 expanded = showSpeedMenu,
                                 onDismissRequest = { showSpeedMenu = false }
                             ) {
-                                listOf(1.0f, 2.0f, 4.0f, 8.0f, 16.0f).forEach { spd ->
+                                listOf(1.0f, 1.5f, 2.0f, 4.0f, 8.0f, 16.0f).forEach { spd ->
                                     DropdownMenuItem(
-                                        text = { Text("${spd.toInt()}x Speed") },
+                                        text = { Text("${if (spd % 1f == 0f) spd.toInt() else spd}x Speed") },
                                         onClick = {
                                             speedMultiplier = spd
                                             emulatorCore.fastForwardMultiplier = spd
