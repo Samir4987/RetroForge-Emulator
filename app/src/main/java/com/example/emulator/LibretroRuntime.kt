@@ -127,8 +127,15 @@ class LibretroRuntime(
             framesPerSecond = values[5],
             sampleRate = values[6]
         ).also {
-            require(it.baseWidth > 0 && it.baseHeight > 0 && it.framesPerSecond > 0.0 &&
-                it.sampleRate > 0.0) { "Core returned invalid AV dimensions or timing." }
+            require(
+                it.baseWidth in 1..4096 &&
+                    it.baseHeight in 1..4096 &&
+                    it.maxWidth in it.baseWidth..4096 &&
+                    it.maxHeight in it.baseHeight..4096 &&
+                    it.aspectRatio.isFinite() && it.aspectRatio >= 0f &&
+                    it.framesPerSecond.isFinite() && it.framesPerSecond in 1.0..1000.0 &&
+                    it.sampleRate.isFinite() && it.sampleRate in 8_000.0..192_000.0
+            ) { "Core returned unsafe AV dimensions, refresh rate, or audio sample rate." }
         }
     }
 
