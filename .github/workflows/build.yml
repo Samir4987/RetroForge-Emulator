@@ -216,10 +216,15 @@ jobs:
           test -s "$ARTIFACT_DIR/azahar_libretro.so"
           test -s "$ARTIFACT_DIR/AZAHAR-LICENSE.txt"
           test -s "$ARTIFACT_DIR/AZAHAR-REVISION.txt"
-          test -s "$ARTIFACT_DIR/AZAHAR-SHA256.txt"
           test "$(tr -d '\r\n' < "$ARTIFACT_DIR/AZAHAR-REVISION.txt")" = "01623d2fb707317410225c0eced82e3e0c84edc1"
+          if [ -s "$ARTIFACT_DIR/AZAHAR-SHA256.txt" ]; then
+            EXPECTED_SHA="$(tr -d '\r\n' < "$ARTIFACT_DIR/AZAHAR-SHA256.txt")"
+          else
+            # The first pinned artifact predates the SHA manifest; pin its verified binary hash.
+            EXPECTED_SHA="054c68d193b31b4cc19a76c8949fa1d7e54bd1f8c5c5927d63e5e7603b840874"
+            printf '%s\n' "$EXPECTED_SHA" > "$ARTIFACT_DIR/AZAHAR-SHA256.txt"
+          fi
           ACTUAL_SHA="$(sha256sum "$ARTIFACT_DIR/azahar_libretro.so" | cut -d' ' -f1)"
-          EXPECTED_SHA="$(cat "$ARTIFACT_DIR/AZAHAR-SHA256.txt")"
           test "$ACTUAL_SHA" = "$EXPECTED_SHA"
 
       - name: Build 3DS-enabled debug APK and run tests
