@@ -362,6 +362,10 @@ fun EmulatorScreen(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             )
 
+            // Keep the readable campaign journal in sync with the emulator frame loop.
+            val campaignView = remember(frameTicker) { emulatorCore.activeCampaignView }
+            campaignView?.let { CampaignPanel(view = it) }
+
             // On-Screen Virtual Controller
             VirtualController(
                 skin = activeSkin,

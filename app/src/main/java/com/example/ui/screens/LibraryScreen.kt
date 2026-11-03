@@ -93,6 +93,7 @@ fun LibraryScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var selectedSystemFilter by remember { mutableStateOf("ALL") }
+    var selectedLibrarySection by remember { mutableStateOf("RETROFORGE") }
     var isGridView by remember { mutableStateOf(true) }
     var isScanning by remember { mutableStateOf(false) }
     var inspectRom by remember { mutableStateOf<ScannedRomEntity?>(null) }
@@ -104,6 +105,9 @@ fun LibraryScreen(
         romLibraryRepository.getRomsBySystem(selectedSystemFilter)
     }
     val romList by allRomsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val retroForgeGames = romList.filter { it.isBuiltIn }
+    val importedGames = romList.filterNot { it.isBuiltIn }
+    val displayedGames = if (selectedLibrarySection == "RETROFORGE") retroForgeGames else importedGames
 
     // Multi-file ROM scanner
     val multiRomPickerLauncher = rememberLauncherForActivityResult(
@@ -328,6 +332,61 @@ fun LibraryScreen(
                 }
             }
 
+            // Separate built-in RetroForge games from user-imported ROMs.
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 4.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    FilterChip(
+                        selected = selectedLibrarySection == "RETROFORGE",
+                        onClick = { selectedLibrarySection = "RETROFORGE" },
+                        label = {
+                            Text(
+                                text = "RetroForge Games (${retroForgeGames.size})",
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedLibrarySection == "RETROFORGE") Color.Black else Color.White
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF00E5FF),
+                            containerColor = Color(0xFF1C1E2D)
+                        ),
+                        modifier = Modifier.testTag("section_retroforge_games")
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = selectedLibrarySection == "IMPORTED",
+                        onClick = { selectedLibrarySection = "IMPORTED" },
+                        label = {
+                            Text(
+                                text = "Imported Games (${importedGames.size})",
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedLibrarySection == "IMPORTED") Color.Black else Color.White
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF00E5FF),
+                            containerColor = Color(0xFF1C1E2D)
+                        ),
+                        modifier = Modifier.testTag("section_imported_games")
+                    )
+                }
+            }
+
+            Text(
+                text = if (selectedLibrarySection == "RETROFORGE") "RETROFORGE GAMES" else "IMPORTED GAMES",
+                color = Color(0xFF00E5FF),
+                fontWeight = FontWeight.Black,
+                fontSize = 13.sp,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp)
+            )
+
             // System Category Filter Chips
             LazyRow(
                 modifier = Modifier
@@ -358,7 +417,7 @@ fun LibraryScreen(
             }
 
             // Games Display (Box Art Grid or List View)
-            if (romList.isEmpty()) {
+            if (displayedGames.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -366,7 +425,7 @@ fun LibraryScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No ROMs found for $selectedSystemFilter. Tap 'Scan ROMs' above to index your game files!",
+                        text = if (selectedLibrarySection == "RETROFORGE") "No built-in RetroForge games found for $selectedSystemFilter." else "No imported games found for $selectedSystemFilter. Tap Scan ROMs or Play File to add ROMs.",
                         color = Color.Gray,
                         fontSize = 13.sp,
                         fontFamily = FontFamily.SansSerif
@@ -384,7 +443,7 @@ fun LibraryScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(romList, key = { it.id }) { rom ->
+                    items(displayedGames, key = { it.id }) { rom ->
                         BoxArtCard(
                             rom = rom,
                             onPlay = {
@@ -410,7 +469,7 @@ fun LibraryScreen(
                     contentPadding = PaddingValues(bottom = 80.dp, top = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(romList, key = { it.id }) { rom ->
+                    items(displayedGames, key = { it.id }) { rom ->
                         ListRomCardItem(
                             rom = rom,
                             onPlay = {

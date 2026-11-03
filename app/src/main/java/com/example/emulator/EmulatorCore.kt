@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.util.Base64
 import com.example.data.model.RetroGame
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import kotlin.math.cos
@@ -45,6 +46,12 @@ class EmulatorCore(
     private var playerHealth = 100
     private var score = 0
     private var gameTick = 0
+    private lateinit var campaign: GameCampaign
+    val activeCampaignView: CampaignView?
+        get() = if (::campaign.isInitialized) campaign.view else null
+    private val collectedGems = mutableSetOf<Int>()
+    private val defeatedDungeonSentries = mutableSetOf<Int>()
+    private var touchWasActive = false
 
     // N64 3D engine state
     private var pitch = 0f
@@ -66,13 +73,18 @@ class EmulatorCore(
     init {
         // Pre-populate touch targets
         repeat(6) {
-            touchTargets.add(floatArrayOf(40f + it * 32f, 50f + (it % 3) * 30f, 12f, 1f))
+            touchTargets.add(floatArrayOf(40f + (it % 3) * 40f, 36f + (it / 3) * 60f, 12f, 1f))
         }
     }
 
     fun loadGame(game: RetroGame) {
         currentGame = game
         currentSystem = RetroSystem.fromCode(game.system)
+        campaign = GameCampaign.forSystem(currentSystem)
+        campaign.reset()
+        collectedGems.clear()
+        defeatedDungeonSentries.clear()
+        touchWasActive = false
         recreateBuffers()
         resetGameState()
         rewindBuffer.clear()
@@ -111,10 +123,20 @@ class EmulatorCore(
         yaw = 0f
         lasers.clear()
         shieldCharge = 100
+        collectedGems.clear()
+        gameTick = 0
+        frameCounter = 0L
+        playTimeSeconds = 0L
+        touchWasActive = false
+        touchTargets.forEachIndexed { index, target ->
+            target[0] = 40f + (index % 3) * 40f
+            target[1] = 36f + (index / 3) * 60f
+            target[3] = 1f
+        }
     }
 
     fun tick() {
-        if (isPaused) return
+        if (isPaused || !::campaign.isInitialized) return
 
         if (isRewinding) {
             val pastFrame = rewindBuffer.pop()
@@ -130,7 +152,19 @@ class EmulatorCore(
         // Fast-forward step execution
         val steps = max(1, fastForwardMultiplier.toInt())
         for (s in 0 until steps) {
+            val previousLevel = campaign.view.level
             updateSimulation()
+            if (campaign.view.level != previousLevel) {
+                collectedGems.clear()
+                defeatedDungeonSentries.clear()
+                lasers.clear()
+                touchWasActive = false
+                touchTargets.forEachIndexed { index, target ->
+                    target[0] = 40f + (index % 3) * 40f
+                    target[1] = 36f + (index / 3) * 60f
+                    target[3] = 1f
+                }
+            }
             frameCounter++
             if (frameCounter % 60 == 0L) {
                 playTimeSeconds++
@@ -138,6 +172,7 @@ class EmulatorCore(
         }
 
         renderFrame()
+        drawCampaignOverlay()
 
         // Push state snapshot into rewind buffer (sampling every 2-3 frames to maximize rewind length)
         if (frameCounter % 2 == 0L) {
@@ -167,7 +202,20 @@ class EmulatorCore(
 
         if (inputState.buttonA) {
             audioSynthesizer.playLaser()
-            score += 10
+            if (campaign.view.bossActive) {
+                campaign.damageBoss()
+                score += 10
+            } else {
+                val sentries = listOf(36f to 36f, 120f to 44f, 80f to 108f, 40f to 104f, 120f to 104f)
+                val target = sentries.indices.firstOrNull { index ->
+                    index !in defeatedDungeonSentries && kotlin.math.hypot(playerX - sentries[index].first, playerY - sentries[index].second) < 19f
+                }
+                if (target != null) {
+                    defeatedDungeonSentries.add(target)
+                    campaign.recordObjective()
+                    score += 10
+                }
+            }
             inputState.buttonA = false
         }
         if (inputState.buttonB) {
@@ -178,8 +226,8 @@ class EmulatorCore(
 
     private fun updateGbcSimulation() {
         // Platformer gravity and jump
-        playerVy += 0.45f // gravity
-        if (playerVy > 5f) playerVy = 5f
+        playerVy += 0.40f // gravity
+        if (playerVy > 6f) playerVy = 6f
         playerY += playerVy
 
         val floorY = 110f
@@ -192,10 +240,23 @@ class EmulatorCore(
         if (inputState.dpadRight) playerX = (playerX + 2.2f).coerceAtMost(150f)
 
         if (inputState.buttonA && playerY >= floorY) {
-            playerVy = -6.2f
+            playerVy = -8.0f
             audioSynthesizer.playJump()
             score += 5
             inputState.buttonA = false
+        }
+        val gemPositions = listOf(52f to 75f, 118f to 55f, 84f to 42f)
+        gemPositions.forEachIndexed { index, gem ->
+            if (index !in collectedGems && kotlin.math.hypot(playerX - gem.first, playerY - gem.second) < 13f) {
+                collectedGems.add(index)
+                score += 25
+                audioSynthesizer.playCoin()
+                campaign.recordObjective()
+            }
+        }
+        if (inputState.buttonB) {
+            if (campaign.view.bossActive) campaign.damageBoss()
+            inputState.buttonB = false
         }
     }
 
@@ -226,36 +287,48 @@ class EmulatorCore(
             trackPosition = 0f
             lap++
             audioSynthesizer.playCoin()
+            if (campaign.view.bossActive) campaign.damageBoss() else campaign.recordObjective()
         }
     }
 
     private fun updateNdsSimulation() {
-        // Top screen: Boss threats; Bottom screen: Stylus touches
+        // Touch coordinates are normalized by the UI; convert to the target model's 160x144 space.
+        val touchPx = inputState.touchX * 160f
+        val touchPy = inputState.touchY * 144f
+        val justTouched = inputState.isTouching && !touchWasActive
+
         if (inputState.isTouching) {
             shieldCharge = (shieldCharge - 1).coerceAtLeast(0)
-            val touchPx = inputState.touchX * currentSystem.screenWidth
-            val touchPy = inputState.touchY * currentSystem.screenHeight
-
-            touchTargets.forEach { target ->
-                val dist = kotlin.math.hypot(touchPx - target[0], touchPy - target[1])
-                if (dist < target[2] * 2 && target[3] > 0.5f) {
-                    target[3] = 0f // Pop target
-                    score += 50
-                    audioSynthesizer.playLaser()
-                }
-            }
         } else {
             shieldCharge = (shieldCharge + 1).coerceAtMost(100)
         }
 
-        // Respawn touch targets occasionally
-        if (gameTick % 90 == 0) {
-            touchTargets.forEach {
-                it[3] = 1f
-                it[0] = 30f + (Math.random() * 190f).toFloat()
-                it[1] = 40f + (Math.random() * 110f).toFloat()
+        // Count one deliberate tap, not every frame that a finger remains on the screen.
+        if (justTouched && campaign.view.bossActive) {
+            val dx = touchPx - 80f
+            val dy = touchPy - 72f
+            if (kotlin.math.hypot(dx, dy) < 18f) campaign.damageBoss()
+        } else if (justTouched && !campaign.view.completed) {
+            val target = touchTargets.firstOrNull {
+                it[3] > 0.5f && kotlin.math.hypot(touchPx - it[0], touchPy - it[1]) < it[2] * 1.5f
+            }
+            if (target != null) {
+                target[3] = 0f
+                score += 50
+                audioSynthesizer.playLaser()
+                campaign.recordObjective()
             }
         }
+
+        // Respawn targets inside the visible touch area while objectives remain.
+        if (gameTick % 90 == 0 && !campaign.view.bossActive && !campaign.view.completed) {
+            touchTargets.forEach {
+                it[3] = 1f
+                it[0] = 24f + (Math.random() * 112f).toFloat()
+                it[1] = 24f + (Math.random() * 96f).toFloat()
+            }
+        }
+        touchWasActive = inputState.isTouching
     }
 
     private fun updateN64Simulation() {
@@ -271,23 +344,33 @@ class EmulatorCore(
 
         if (inputState.buttonA || inputState.triggerZ) {
             // Fire 3D Laser
-            lasers.add(floatArrayOf(0f, -2f, 10f, sin(yaw) * 4f, -sin(pitch) * 4f, cos(yaw) * 15f))
+            lasers.add(floatArrayOf(0f, -2f, 10f, sin(yaw) * 100f, -sin(pitch) * 100f, cos(yaw).coerceAtLeast(0.25f) * 15f))
             audioSynthesizer.playLaser()
             inputState.buttonA = false
             inputState.triggerZ = false
         }
 
-        // Update active lasers
+        // Resolve shots against the moving polygon target at its depth.
         val iter = lasers.iterator()
         while (iter.hasNext()) {
             val laser = iter.next()
             laser[0] += laser[3]
             laser[1] += laser[4]
             laser[2] += laser[5]
-            if (laser[2] > 250f) {
-                iter.remove()
-                score += 20
+
+            if (laser[2] >= 50f) {
+                val shotX = 160f + (laser[0] / (laser[2] * 0.1f)).coerceIn(-150f, 150f)
+                val shotY = 120f + (laser[1] / (laser[2] * 0.1f)).coerceIn(-100f, 100f)
+                val targetX = 160f + (cos(gameTick * 0.03) * 60f).toFloat()
+                val targetY = 120f + (sin(gameTick * 0.02) * 40f).toFloat()
+                if (kotlin.math.hypot(shotX - targetX, shotY - targetY) < 24f) {
+                    iter.remove()
+                    score += 20
+                    if (campaign.view.bossActive) campaign.damageBoss() else campaign.recordObjective()
+                    continue
+                }
             }
+            if (laser[2] > 250f) iter.remove()
         }
     }
 
@@ -373,6 +456,7 @@ class EmulatorCore(
         val gemBounce = (sin(gameTick * 0.1) * 3).toFloat()
         canvas.drawCircle(52f, 75f + gemBounce, 4f, paint)
         canvas.drawCircle(118f, 55f + gemBounce, 4f, paint)
+        canvas.drawCircle(84f, 42f - gemBounce, 4f, paint)
 
         // Player (Red & Yellow cap)
         paint.color = Color.rgb(240, 50, 50)
@@ -602,10 +686,130 @@ class EmulatorCore(
         canvas.drawText("SCORE: $score", 240f, 226f, paint)
     }
 
+    /** Draws campaign progress in the prototype's existing low-resolution HUD style. */
+    private fun drawCampaignOverlay() {
+        if (!::campaign.isInitialized) return
+        val view = campaign.view
+        val canvas = Canvas(screenBitmap)
+        val paint = Paint().apply { isAntiAlias = false }
+        val h = screenBitmap.height.toFloat()
+        val w = screenBitmap.width.toFloat()
+        val panelHeight = if (currentSystem == RetroSystem.GBC) 22f else 20f
+        paint.color = Color.argb(220, 8, 12, 20)
+        canvas.drawRect(0f, h - panelHeight, w, h, paint)
+        if (view.bossActive) {
+            paint.style = Paint.Style.FILL
+            when (currentSystem) {
+                RetroSystem.GB -> {
+                    paint.color = Color.rgb(15, 56, 15)
+                    canvas.drawRect(w / 2f - 9f, h / 2f - 9f, w / 2f + 9f, h / 2f + 9f, paint)
+                    paint.color = Color.rgb(155, 188, 15)
+                    canvas.drawRect(w / 2f - 5f, h / 2f - 3f, w / 2f - 2f, h / 2f, paint)
+                    canvas.drawRect(w / 2f + 2f, h / 2f - 3f, w / 2f + 5f, h / 2f, paint)
+                }
+                RetroSystem.GBC -> {
+                    paint.color = Color.rgb(220, 80, 255)
+                    val crystal = Path().apply {
+                        moveTo(w / 2f, h / 2f - 18f)
+                        lineTo(w / 2f + 14f, h / 2f)
+                        lineTo(w / 2f, h / 2f + 18f)
+                        lineTo(w / 2f - 14f, h / 2f)
+                        close()
+                    }
+                    canvas.drawPath(crystal, paint)
+                }
+                RetroSystem.GBA -> {
+                    paint.color = Color.rgb(245, 150, 30)
+                    canvas.drawRoundRect(w / 2f - 20f, h * 0.58f, w / 2f + 20f, h * 0.68f, 5f, 5f, paint)
+                    paint.color = Color.DKGRAY
+                    canvas.drawRect(w / 2f - 14f, h * 0.65f, w / 2f - 7f, h * 0.70f, paint)
+                    canvas.drawRect(w / 2f + 7f, h * 0.65f, w / 2f + 14f, h * 0.70f, paint)
+                }
+                RetroSystem.NDS -> {
+                    paint.color = Color.RED
+                    canvas.drawCircle(w / 2f, h / 2f, 12f, paint)
+                    paint.color = Color.WHITE
+                    canvas.drawCircle(w / 2f, h / 2f, 4f, paint)
+                }
+                RetroSystem.N64 -> {
+                    paint.color = Color.rgb(180, 140, 220)
+                    paint.style = Paint.Style.STROKE
+                    val r = 22f
+                    val bossShape = Path().apply {
+                        moveTo(w / 2f, h / 2f - r)
+                        lineTo(w / 2f + r, h / 2f - 5f)
+                        lineTo(w / 2f + 13f, h / 2f + r)
+                        lineTo(w / 2f - 17f, h / 2f + r * 0.7f)
+                        lineTo(w / 2f - r, h / 2f - 7f)
+                        close()
+                    }
+                    canvas.drawPath(bossShape, paint)
+                    paint.style = Paint.Style.FILL
+                }
+            }
+        }
+        if (!view.bossActive && currentSystem == RetroSystem.GB) {
+            val sentries = listOf(36f to 36f, 120f to 44f, 80f to 108f, 40f to 104f, 120f to 104f)
+            paint.color = Color.rgb(48, 98, 48)
+            sentries.forEachIndexed { index, point ->
+                if (index < view.objectiveGoal && index !in defeatedDungeonSentries) {
+                    canvas.drawRect(point.first - 5f, point.second - 5f, point.first + 5f, point.second + 5f, paint)
+                    paint.color = Color.rgb(15, 56, 15)
+                    canvas.drawRect(point.first - 2f, point.second - 2f, point.first + 2f, point.second, paint)
+                    paint.color = Color.rgb(48, 98, 48)
+                }
+            }
+        }
+        paint.color = when (currentSystem) {
+            RetroSystem.GB -> Color.rgb(15, 56, 15)
+            RetroSystem.GBC -> Color.rgb(100, 220, 190)
+            RetroSystem.GBA -> Color.YELLOW
+            RetroSystem.NDS -> Color.CYAN
+            RetroSystem.N64 -> Color.rgb(255, 200, 0)
+        }
+        paint.textSize = if (w < 200f) 6f else 8f
+        val label = if (view.completed) "CAMPAIGN CLEAR" else "LV ${view.level}/3 ${view.levelTitle}"
+        canvas.drawText(label.take(34), 3f, h - 11f, paint)
+        paint.textSize = if (w < 200f) 5f else 7f
+        val detail = when {
+            view.completed -> view.message
+            view.bossActive -> "BOSS ${view.bossName} HP ${view.bossHealth}/${view.bossHealthMax}"
+            view.objectiveProgress == 0 -> view.story
+            else -> "${view.objective}: ${view.objectiveProgress}/${view.objectiveGoal}"
+        }
+        canvas.drawText(detail.take(if (w < 200f) 28 else 44), 3f, h - 3f, paint)
+        if (currentSystem == RetroSystem.NDS && bottomScreenBitmap != null) {
+            val bottom = Canvas(bottomScreenBitmap!!)
+            paint.textSize = 8f
+            paint.color = Color.WHITE
+            bottom.drawText(if (view.bossActive) "BOSS: ${view.bossName}" else "LV ${view.level}: ${view.objective}", 5f, 12f, paint)
+            if (view.bossActive) {
+                paint.color = Color.RED
+                bottom.drawRect(5f, 17f, 5f + 246f * view.bossHealth / view.bossHealthMax, 21f, paint)
+            }
+        }
+    }
+
     private fun createSnapshot(): FrameSnapshot {
         val stateJson = JSONObject().apply {
             put("frameCounter", frameCounter)
             put("playTimeSeconds", playTimeSeconds)
+            put("gameTick", gameTick)
+            put("trackCurve", trackCurve.toDouble())
+            put("shieldCharge", shieldCharge)
+            put("collectedGems", JSONArray().apply { collectedGems.sorted().forEach { put(it) } })
+            put("defeatedDungeonSentries", JSONArray().apply { defeatedDungeonSentries.sorted().forEach { put(it) } })
+            put("touchTargets", JSONArray().apply {
+                touchTargets.forEach { target ->
+                    put(JSONArray().put(target[0].toDouble()).put(target[1].toDouble()).put(target[2].toDouble()).put(target[3].toDouble()))
+                }
+            })
+            put("lasers", JSONArray().apply {
+                lasers.forEach { laser ->
+                    put(JSONArray().put(laser[0].toDouble()).put(laser[1].toDouble()).put(laser[2].toDouble())
+                        .put(laser[3].toDouble()).put(laser[4].toDouble()).put(laser[5].toDouble()))
+                }
+            })
             put("playerX", playerX.toDouble())
             put("playerY", playerY.toDouble())
             put("playerVx", playerVx.toDouble())
@@ -617,6 +821,14 @@ class EmulatorCore(
             put("lap", lap)
             put("pitch", pitch.toDouble())
             put("yaw", yaw.toDouble())
+            if (::campaign.isInitialized) {
+                val campaignState = campaign.snapshot()
+                put("campaignStageIndex", campaignState.stageIndex)
+                put("campaignProgress", campaignState.progress)
+                put("campaignBossHealth", campaignState.bossHealth)
+                put("campaignBossActive", campaignState.bossActive)
+                put("campaignCompleted", campaignState.completed)
+            }
         }.toString()
 
         val pixels = IntArray(screenBitmap.width * screenBitmap.height)
@@ -635,6 +847,39 @@ class EmulatorCore(
             val json = JSONObject(snapshot.stateJson)
             frameCounter = json.optLong("frameCounter", snapshot.frameIndex)
             playTimeSeconds = json.optLong("playTimeSeconds", playTimeSeconds)
+            gameTick = json.optInt("gameTick", gameTick)
+            trackCurve = json.optDouble("trackCurve", trackCurve.toDouble()).toFloat()
+            shieldCharge = json.optInt("shieldCharge", shieldCharge).coerceIn(0, 100)
+
+            collectedGems.clear()
+            json.optJSONArray("collectedGems")?.let { values ->
+                for (index in 0 until values.length()) collectedGems.add(values.optInt(index))
+            }
+            defeatedDungeonSentries.clear()
+            json.optJSONArray("defeatedDungeonSentries")?.let { values ->
+                for (index in 0 until values.length()) defeatedDungeonSentries.add(values.optInt(index))
+            }
+            json.optJSONArray("touchTargets")?.let { values ->
+                for (index in 0 until minOf(values.length(), touchTargets.size)) {
+                    val target = values.optJSONArray(index) ?: continue
+                    if (target.length() >= 4) {
+                        touchTargets[index][0] = target.optDouble(0).toFloat()
+                        touchTargets[index][1] = target.optDouble(1).toFloat()
+                        touchTargets[index][2] = target.optDouble(2).toFloat()
+                        touchTargets[index][3] = target.optDouble(3).toFloat()
+                    }
+                }
+            }
+            lasers.clear()
+            json.optJSONArray("lasers")?.let { values ->
+                for (index in 0 until values.length()) {
+                    val laser = values.optJSONArray(index) ?: continue
+                    if (laser.length() >= 6) {
+                        lasers.add(FloatArray(6) { part -> laser.optDouble(part).toFloat() })
+                    }
+                }
+            }
+            touchWasActive = false
             playerX = json.optDouble("playerX", playerX.toDouble()).toFloat()
             playerY = json.optDouble("playerY", playerY.toDouble()).toFloat()
             playerVx = json.optDouble("playerVx", playerVx.toDouble()).toFloat()
@@ -646,6 +891,17 @@ class EmulatorCore(
             lap = json.optInt("lap", lap)
             pitch = json.optDouble("pitch", pitch.toDouble()).toFloat()
             yaw = json.optDouble("yaw", yaw.toDouble()).toFloat()
+            if (::campaign.isInitialized && json.has("campaignStageIndex")) {
+                campaign.restore(
+                    CampaignSnapshot(
+                        stageIndex = json.optInt("campaignStageIndex", 0),
+                        progress = json.optInt("campaignProgress", 0),
+                        bossHealth = json.optInt("campaignBossHealth", 0),
+                        bossActive = json.optBoolean("campaignBossActive", false),
+                        completed = json.optBoolean("campaignCompleted", false)
+                    )
+                )
+            }
 
             screenBitmap.setPixels(
                 snapshot.displayBuffer,

@@ -1,10 +1,9 @@
-
 name: Build Android APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main, master, feature/standalone-games-full-campaign]
   pull_request:
 
 permissions:
@@ -29,6 +28,20 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Set up JDK 21 for Firebase Emulator Suite
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Node.js for Firebase Emulator Suite
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
 
       - name: Install Android SDK
         uses: android-actions/setup-android@v4
@@ -68,8 +81,8 @@ jobs:
           mkdir wrapper-project
           cd wrapper-project
 
-          printf 'rootProject.name = "wrapper-bootstrap"\n' > settings.gradle
-          printf '// Temporary wrapper bootstrap project\n' > build.gradle
+          printf '%s' 'rootProject.name = "wrapper-bootstrap"' > settings.gradle
+          printf '%s' '// Temporary wrapper bootstrap project' > build.gradle
 
           "../gradle-${GRADLE_VERSION}/bin/gradle" wrapper \
             --gradle-version "$GRADLE_VERSION" \
@@ -149,6 +162,54 @@ jobs:
           grep -R -n "default_web_client_id" \
             app/build/generated/res/google-services \
             2>/dev/null || true
+
+      - name: Run unit and Firebase emulator tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          # Firebase CLI now requires Java 21, while the Android build uses JDK 17.
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+
+          firebase emulators:start \
+            --project demo-no-project \
+            --only auth,firestore > "$RUNNER_TEMP/firebase-emulators.log" 2>&1 &
+          EMULATOR_PID=$!
+
+          cleanup() {
+            kill "$EMULATOR_PID" 2>/dev/null || true
+            wait "$EMULATOR_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          ready=false
+          for attempt in $(seq 1 90); do
+            if curl --silent --fail http://127.0.0.1:9099/ >/dev/null \
+              && curl --silent --fail http://127.0.0.1:8085/ >/dev/null; then
+              ready=true
+              break
+            fi
+
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+              cat "$RUNNER_TEMP/firebase-emulators.log"
+              exit 1
+            fi
+            sleep 2
+          done
+
+          if [ "$ready" != true ]; then
+            cat "$RUNNER_TEMP/firebase-emulators.log"
+            echo "Firebase emulators did not become ready in time."
+            exit 1
+          fi
+
+          # Run Android unit tests with the project's supported JDK 17.
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          ./gradlew --no-daemon :app:testDebugUnitTest
+
+          cat "$RUNNER_TEMP/firebase-emulators.log"
 
       - name: Build debug APK
         shell: bash
