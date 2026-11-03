@@ -47,7 +47,7 @@ Implementation does not mean the system is fully supported yet.
 2. **The GLES3/EGL path uses CPU readback.** It is a compatibility-oriented first frontend, not a zero-copy Android display surface. Measure frame pacing, heat, and memory use on devices.
 3. **System data and firmware are not bundled.** Azahar requires decrypted ROMs; some games also need Mii data. The in-app folder importer accepts user-owned Azahar data (including `sysdata/`, `nand/`, and `sdmc/`) and places it under `files/retroforge/3ds/saves/Azahar/`. Do not distribute proprietary firmware, keys, NAND dumps, or game content.
 4. **Save-state support is conditional and local-only.** It is exposed only when the core provides `retro_serialize_size`, `retro_serialize`, and `retro_unserialize`. Large snapshots are stored under app-private files and are not cloud-synced; round-trip testing against the pinned core is pending.
-5. **Physical gamepad mapping is not complete.** The on-screen controller and touch input are forwarded; Android hardware-controller key/axis mapping still needs implementation and device testing.
+5. **Physical gamepad mapping is implemented but not device-verified.** Android gamepad keys map D-pad, A/B/X/Y, Start/Select, L/R, ZL/ZR, and stick clicks; joystick axes map the Circle Pad and New 3DS C-stick with a dead zone. Hardware-specific axis ranges and controller layouts still need testing on real devices.
 6. **Packaging must be rerun against the latest verified Azahar artifact.** The manual workflow must produce an APK containing the core, `libc++_shared.so`, and the bundled license/revision assets.
 7. **Licensing review remains open.** Azahar declares GPL-3.0. Before distributing the APK, review combined-work obligations and provide required corresponding source and notices. Do not describe the resulting distribution as proprietary or license-free.
 
@@ -89,6 +89,7 @@ The manual GitHub Actions workflow **Package Nintendo 3DS core into Android APK*
 - [x] Add the N3DS system/core registration and extension tests.
 - [x] Implement JNI video, audio, input, AV-info, system/save/content directory, and optional save-state interfaces.
 - [x] Add Kotlin runtime, AudioTrack output, dual-display conversion, touch and virtual-controller forwarding.
+- [x] Map Android physical gamepad keys, Circle Pad/C-stick axes, hat D-pad, and ZL/ZR trigger axes; add mapper unit tests.
 - [x] Connect N3DS ROM selection, persistent Storage Access Framework permissions, and runtime lifecycle to the emulator screen.
 - [x] Add an app-private importer for user-provided Azahar system/Mii data.
 - [x] Add APK staging for the core, matching C++ runtime, license/revision metadata, and third-party license notices.
