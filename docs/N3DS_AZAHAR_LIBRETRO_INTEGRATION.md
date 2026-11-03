@@ -33,11 +33,12 @@ The pin and build approach follow the upstream Libretro Android CI configuration
 - Video metadata, pitch, pixel format, AV timing, and stereo PCM16 audio are transported to Kotlin.
 - The Compose emulator screen now starts the Azahar runtime for N3DS ROMs rather than using the demo renderer.
 - A vertically stacked dual-display frame is converted into separate top and bottom Android bitmaps, with stacked, side-by-side, top-only, and touch-screen-only layout choices.
-- Virtual D-pad and Circle Pad, A/B/X/Y, Start/Select, L/R, and bottom-screen pointer input are forwarded to Libretro.
+- Virtual D-pad and Circle Pad, A/B/X/Y, Start/Select, L/R, ZL/ZR, and bottom-screen pointer input are forwarded to Libretro. Physical Android gamepads map D-pad, face buttons, shoulders, triggers, stick clicks, Circle Pad, and the New 3DS C-stick; analog axes use a dead zone.
 - PCM samples are sent to Android AudioTrack. Partial writes are retained in a bounded pending buffer.
 - App lifecycle pause/resume pauses native frame execution and audio output.
 - Save-state serialization and restore are exposed when the core exports all three Libretro serialization functions. Large 3DS snapshots are stored atomically in app-private files, not Firestore documents (which have a small per-document size limit); slot metadata is rebuilt from local files on launch.
-- The scanned ROM's persisted URI is carried into the game model so the selected ROM can be copied into app-private cache before native loading.
+- The scanned ROM's persisted URI is carried into the game model so the selected ROM can be copied into app-private cache before native loading. Staging is streamed and capped at 4 GiB; the JNI fallback that must load ROM bytes in memory is capped at 512 MiB and catches allocation failure.
+- Native frame counts and play-time accounting use the core-reported refresh rate rather than assuming 60 Hz.
 
 ## Known limitations and validation still required
 
@@ -48,7 +49,7 @@ Implementation does not mean the system is fully supported yet.
 3. **System data and firmware are not bundled.** Azahar requires decrypted ROMs; some games also need Mii data. The in-app folder importer accepts user-owned Azahar data (including `sysdata/`, `nand/`, and `sdmc/`) and places it under `files/retroforge/3ds/saves/Azahar/`. Do not distribute proprietary firmware, keys, NAND dumps, or game content.
 4. **Save-state support is conditional and local-only.** It is exposed only when the core provides `retro_serialize_size`, `retro_serialize`, and `retro_unserialize`. Large snapshots are stored under app-private files and are not cloud-synced; round-trip testing against the pinned core is pending.
 5. **Physical gamepad mapping is implemented but not device-verified.** Android gamepad keys map D-pad, A/B/X/Y, Start/Select, L/R, ZL/ZR, and stick clicks; joystick axes map the Circle Pad and New 3DS C-stick with a dead zone. Hardware-specific axis ranges and controller layouts still need testing on real devices.
-6. **Packaging must be rerun against the latest verified Azahar artifact.** The manual workflow must produce an APK containing the core, `libc++_shared.so`, and the bundled license/revision assets.
+6. **The current APK packaging workflow still needs a successful end-to-end run.** The branch build workflow downloads the pinned Azahar artifact, verifies its revision and binary hash (or rebuilds it if unavailable), stages the core, runs tests, and verifies the APK contains the core, `libc++_shared.so`, and bundled license/revision assets.
 7. **Licensing review remains open.** Azahar declares GPL-3.0. Before distributing the APK, review combined-work obligations and provide required corresponding source and notices. Do not describe the resulting distribution as proprietary or license-free.
 
 Nintendo 3DS must remain labelled **integration in progress** until the packaging, device, compatibility, lifecycle, and legal gates below pass. Other systems retain their existing demo behavior and are not replaced by the 3DS runtime.
@@ -77,9 +78,9 @@ Package the core into the Android debug APK:
 ./gradlew :app:stageAzaharCore :app:assembleDebug
 ```
 
-The normal APK build does not require the large Azahar binary. Without running the staging task and providing the verified artifact, N3DS reports that its core is unavailable; it must not silently fall back to a fake 3DS game.
+The `feature/n3ds-android-integration` branch's `build.yml` downloads the verified ARM64 core artifact and runs `:app:stageAzaharCore`, tests, and `assembleDebug`. If the artifact is unavailable, it rebuilds the pinned core from source. A generic APK without the staged Azahar binary reports that the N3DS core is unavailable; it must not silently fall back to a fake 3DS game.
 
-The manual GitHub Actions workflow **Package Nintendo 3DS core into Android APK** accepts the successful Azahar build run ID and verifies the artifact before staging it.
+The separate GitHub Actions workflow **Package Nintendo 3DS core into Android APK** remains available for manual packaging from a successful Azahar build run ID.
 
 ## Acceptance gates
 
@@ -90,6 +91,7 @@ The manual GitHub Actions workflow **Package Nintendo 3DS core into Android APK*
 - [x] Implement JNI video, audio, input, AV-info, system/save/content directory, and optional save-state interfaces.
 - [x] Add Kotlin runtime, AudioTrack output, dual-display conversion, touch and virtual-controller forwarding.
 - [x] Map Android physical gamepad keys, Circle Pad/C-stick axes, hat D-pad, and ZL/ZR trigger axes; add mapper unit tests.
+- [x] Add on-screen ZL/ZR controls, refresh-rate-aware native frame accounting, bounded ROM staging, and safe user-data/save-state replacement.
 - [x] Connect N3DS ROM selection, persistent Storage Access Framework permissions, and runtime lifecycle to the emulator screen.
 - [x] Add an app-private importer for user-provided Azahar system/Mii data.
 - [x] Add APK staging for the core, matching C++ runtime, license/revision metadata, and third-party license notices.
