@@ -234,48 +234,17 @@ jobs:
           set -euxo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          unzip -l "$APK" | grep -E 'lib/arm64-v8a/azahar_libretro\.so
-      - name: Upload APK artifact
+          unzip -l "$APK" | grep -F 'lib/arm64-v8a/azahar_libretro.so'
+          unzip -l "$APK" | grep -F 'lib/arm64-v8a/libc++_shared.so'
+          unzip -l "$APK" | grep -F 'assets/licenses/azahar/AZAHAR-LICENSE.txt'
+          unzip -l "$APK" | grep -F 'assets/licenses/azahar/AZAHAR-REVISION.txt'
+          ls -lh "$APK"
+
+      - name: Upload 3DS-enabled APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: RetroForge-Android-APK-with-Azahar-3DS
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           compression-level: 0
-
-          unzip -l "$APK" | grep -E 'lib/arm64-v8a/libc\+\+_shared\.so
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: RetroForge-Android-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          compression-level: 0
-
-          unzip -l "$APK" | grep -E 'assets/licenses/azahar/AZAHAR-LICENSE\.txt
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: RetroForge-Android-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          compression-level: 0
-
-          unzip -l "$APK" | grep -E 'assets/licenses/azahar/AZAHAR-REVISION\.txt
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: RetroForge-Android-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          compression-level: 0
-
-          ls -lh "$APK"
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: RetroForge-Android-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          compression-level: 0
+          retention-days: 14
