@@ -16,6 +16,7 @@ import com.example.emulator.LibretroRuntime
 import com.example.emulator.LibretroVideoConverter
 import com.example.emulator.N3dsSaveStateStore
 import com.example.emulator.N3dsSystemDataImporter
+import com.example.emulator.N3dsInputMapper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -25,6 +26,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,8 +64,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.nativeKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.onGenericMotionEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -97,6 +104,7 @@ fun EmulatorScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val gamepadFocusRequester = remember { FocusRequester() }
 
     val isNintendo3ds = game.system.equals("N3DS", ignoreCase = true)
     val n3dsRuntime = remember(game.id, isNintendo3ds) {
@@ -185,6 +193,10 @@ fun EmulatorScreen(
     var showSkinMenu by remember { mutableStateOf(false) }
 
     val saveStates = remember { mutableStateListOf<SaveStateDto>() }
+
+    LaunchedEffect(game.id, isNintendo3ds) {
+        if (isNintendo3ds) gamepadFocusRequester.requestFocus()
+    }
 
     // Intercept back button to return safely to Library
     BackHandler {
@@ -298,6 +310,7 @@ fun EmulatorScreen(
             n3dsAudioOutput?.close()
             n3dsAudioOutput = null
             n3dsRuntime?.close()
+            emulatorCore.inputState.reset()
         }
     }
 
@@ -349,6 +362,23 @@ fun EmulatorScreen(
             .fillMaxSize()
             .background(Color(0xFF0A0C14))
             .testTag("emulator_screen")
+            .focusRequester(gamepadFocusRequester)
+            .focusable()
+            .onPreviewKeyEvent { keyEvent ->
+                if (!isNintendo3ds) return@onPreviewKeyEvent false
+                val nativeEvent = keyEvent.nativeKeyEvent
+                if (nativeEvent.action != android.view.KeyEvent.ACTION_DOWN &&
+                    nativeEvent.action != android.view.KeyEvent.ACTION_UP
+                ) return@onPreviewKeyEvent false
+                N3dsInputMapper.applyKeyEvent(
+                    emulatorCore.inputState,
+                    nativeEvent.keyCode,
+                    nativeEvent.action == android.view.KeyEvent.ACTION_DOWN
+                )
+            }
+            .onGenericMotionEvent { motionEvent ->
+                isNintendo3ds && N3dsInputMapper.applyMotionEvent(emulatorCore.inputState, motionEvent)
+            }
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -743,13 +773,19 @@ private fun sendNintendo3dsInput(
         8 to input.buttonA,
         9 to input.buttonX,
         10 to input.triggerL,
-        11 to input.triggerR
+        11 to input.triggerR,
+        12 to input.triggerZL,
+        13 to input.triggerZR,
+        14 to input.buttonL3,
+        15 to input.buttonR3
     )
     buttons.forEach { (button, pressed) ->
         runtime.setJoypadButton(button = button, pressed = pressed)
     }
     runtime.setAnalogAxis(stick = 0, axis = 0, value = (input.stickX * 32_767f).roundToInt())
     runtime.setAnalogAxis(stick = 0, axis = 1, value = (input.stickY * 32_767f).roundToInt())
+    runtime.setAnalogAxis(stick = 1, axis = 0, value = (input.stick2X * 32_767f).roundToInt())
+    runtime.setAnalogAxis(stick = 1, axis = 1, value = (input.stick2Y * 32_767f).roundToInt())
 }
 
 private fun bitmapToBase64(bitmap: Bitmap): String {
