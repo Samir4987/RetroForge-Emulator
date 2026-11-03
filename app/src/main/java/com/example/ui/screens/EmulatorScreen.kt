@@ -356,20 +356,30 @@ fun EmulatorScreen(
                         // Snapshot mutable UI input on the main thread so one native
                         // frame receives a coherent set of controls.
                         val inputSnapshot = emulatorCore.inputState.copy()
+                        val framesToRun = speedMultiplier.toInt().coerceIn(1, 1000)
                         val output = withContext(Dispatchers.Default) {
-                            sendNintendo3dsInput(n3dsRuntime, inputSnapshot)
-                            n3dsRuntime.runFrame().getOrThrow()
-                            val frame = n3dsRuntime.copyVideoFrame().getOrThrow()
-                            val displays = frame?.let(LibretroVideoConverter::splitDualScreenFrame)
-                            val audio = n3dsRuntime.drainAudioSamples().getOrThrow()
-                            displays to audio
+                            var latestDisplays: Pair<Bitmap, Bitmap>? = null
+                            var latestAudio = ShortArray(0)
+                            repeat(framesToRun) { frameIndex ->
+                                sendNintendo3dsInput(n3dsRuntime, inputSnapshot)
+                                n3dsRuntime.runFrame().getOrThrow()
+                                if (frameIndex == framesToRun - 1) {
+                                    val frame = n3dsRuntime.copyVideoFrame().getOrThrow()
+                                    latestDisplays = frame?.let(LibretroVideoConverter::splitDualScreenFrame)
+                                }
+                                val audio = n3dsRuntime.drainAudioSamples().getOrThrow()
+                                if (framesToRun == 1) latestAudio = audio
+                            }
+                            Triple(latestDisplays, latestAudio, framesToRun)
                         }
                         output.first?.let { (top, bottom) ->
                             n3dsTopBitmap = top
                             n3dsBottomBitmap = bottom
                         }
-                        n3dsAudioOutput?.write(output.second)
-                        emulatorCore.recordExternalFrames(1, n3dsFramesPerSecond)
+                        // Avoid queuing stale/overwhelming audio while the core is
+                        // running ahead; normal-speed audio remains unchanged.
+                        if (framesToRun == 1) n3dsAudioOutput?.write(output.second)
+                        emulatorCore.recordExternalFrames(output.third, n3dsFramesPerSecond)
                         frameTicker = emulatorCore.frameCounter
                     } catch (failure: Exception) {
                         n3dsError = failure.message ?: "Nintendo 3DS emulation stopped unexpectedly."
@@ -377,15 +387,18 @@ fun EmulatorScreen(
                         n3dsAudioOutput?.pause()
                     }
                 }
-                val targetFrameMs = (n3dsFrameIntervalMs.toFloat() / speedMultiplier)
-                    .roundToInt().coerceAtLeast(1).toLong()
-                val elapsedFrameMs = (System.nanoTime() - frameStartedAtNanos) / 1_000_000L
-                delay((targetFrameMs - elapsedFrameMs).coerceAtLeast(0L))
+                if (speedMultiplier <= 1f) {
+                    val elapsedFrameMs = (System.nanoTime() - frameStartedAtNanos) / 1_000_000L
+                    delay((n3dsFrameIntervalMs - elapsedFrameMs).coerceAtLeast(0L))
+                } else {
+                    // Best-effort uncapped fast-forward: the core, not a timer,
+                    // determines the achievable speed.
+                    delay(0)
+                }
             } else {
                 emulatorCore.tick()
                 frameTicker = emulatorCore.frameCounter
-                val frameDelay = (16L / emulatorCore.fastForwardMultiplier.toLong().coerceAtLeast(1L)).coerceAtLeast(4L)
-                delay(frameDelay)
+                if (emulatorCore.fastForwardMultiplier <= 1f) delay(16L) else delay(0)
             }
         }
     }
@@ -504,7 +517,7 @@ fun EmulatorScreen(
                                 expanded = showSpeedMenu,
                                 onDismissRequest = { showSpeedMenu = false }
                             ) {
-                                listOf(1.0f, 1.5f, 2.0f, 4.0f, 8.0f).forEach { spd ->
+                                listOf(1.0f, 2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f, 1000.0f).forEach { spd ->
                                     DropdownMenuItem(
                                         text = { Text("${spd}x Speed") },
                                         onClick = {
