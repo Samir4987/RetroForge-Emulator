@@ -217,7 +217,7 @@ jobs:
           test -s "$ARTIFACT_DIR/AZAHAR-LICENSE.txt"
           test -s "$ARTIFACT_DIR/AZAHAR-REVISION.txt"
           test -s "$ARTIFACT_DIR/AZAHAR-SHA256.txt"
-          grep -qx "01623d2fb707317410225c0eced82e3e0c84edc1" "$ARTIFACT_DIR/AZAHAR-REVISION.txt"
+          test "$(tr -d '\r\n' < "$ARTIFACT_DIR/AZAHAR-REVISION.txt")" = "01623d2fb707317410225c0eced82e3e0c84edc1"
           ACTUAL_SHA="$(sha256sum "$ARTIFACT_DIR/azahar_libretro.so" | cut -d' ' -f1)"
           EXPECTED_SHA="$(cat "$ARTIFACT_DIR/AZAHAR-SHA256.txt")"
           test "$ACTUAL_SHA" = "$EXPECTED_SHA"
