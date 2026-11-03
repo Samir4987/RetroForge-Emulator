@@ -89,7 +89,13 @@ object N3dsSystemDataImporter {
         listChildren(context, treeUri, source).forEach { child ->
             val safeName = sanitizeName(child.displayName)
             if (safeName.isBlank()) return@forEach
+            require(safeName != "." && safeName != "..") {
+                "Azahar data contains an unsafe directory or file name."
+            }
             val output = File(destination, safeName)
+            check(!output.exists()) {
+                "Azahar data contains duplicate names after sanitization: $safeName"
+            }
             if (child.mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
                 copyDirectory(context, treeUri, child.uri, output, stats, depth + 1)
             } else {
