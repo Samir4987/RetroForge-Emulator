@@ -35,6 +35,17 @@ data class EmulatorInputState(
     var touchY: Float = 0f,
     var isTouching: Boolean = false
 ) {
+    // Keep physical D-pad keys and joystick-hat state separate so one input
+    // source cannot release a direction still held by the other source.
+    internal var keyDpadUp = false
+    internal var keyDpadDown = false
+    internal var keyDpadLeft = false
+    internal var keyDpadRight = false
+    internal var hatDpadUp = false
+    internal var hatDpadDown = false
+    internal var hatDpadLeft = false
+    internal var hatDpadRight = false
+
     fun reset() {
         dpadUp = false
         dpadDown = false
@@ -64,5 +75,13 @@ data class EmulatorInputState(
         touchX = 0f
         touchY = 0f
         isTouching = false
+        keyDpadUp = false
+        keyDpadDown = false
+        keyDpadLeft = false
+        keyDpadRight = false
+        hatDpadUp = false
+        hatDpadDown = false
+        hatDpadLeft = false
+        hatDpadRight = false
     }
 }
