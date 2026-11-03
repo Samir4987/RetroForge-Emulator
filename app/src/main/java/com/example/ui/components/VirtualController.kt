@@ -109,18 +109,31 @@ fun VirtualController(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Trigger L
-                BumperButton(
-                    label = if (system == RetroSystem.N64) "Z / L" else "L",
-                    color = skin.bezelColor,
-                    textColor = skin.textColor,
-                    testTag = "button_trigger_l",
-                    onPressChange = { isPressed ->
-                        inputState.triggerL = isPressed
-                        if (system == RetroSystem.N64) inputState.triggerZ = isPressed
-                        if (isPressed) triggerHaptic()
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    BumperButton(
+                        label = if (system == RetroSystem.N64) "Z / L" else "L",
+                        color = skin.bezelColor,
+                        textColor = skin.textColor,
+                        testTag = "button_trigger_l",
+                        onPressChange = { isPressed ->
+                            inputState.triggerL = isPressed
+                            if (system == RetroSystem.N64) inputState.triggerZ = isPressed
+                            if (isPressed) triggerHaptic()
+                        }
+                    )
+                    if (system == RetroSystem.N3DS) {
+                        BumperButton(
+                            label = "ZL",
+                            color = skin.bezelColor,
+                            textColor = skin.textColor,
+                            testTag = "button_trigger_zl",
+                            onPressChange = { isPressed ->
+                                inputState.triggerZL = isPressed
+                                if (isPressed) triggerHaptic()
+                            }
+                        )
                     }
-                )
+                }
 
                 // Center Utility Bar: Fast Forward and Rewind Buttons
                 Row(
@@ -212,17 +225,30 @@ fun VirtualController(
                     }
                 }
 
-                // Trigger R
-                BumperButton(
-                    label = "R",
-                    color = skin.bezelColor,
-                    textColor = skin.textColor,
-                    testTag = "button_trigger_r",
-                    onPressChange = { isPressed ->
-                        inputState.triggerR = isPressed
-                        if (isPressed) triggerHaptic()
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (system == RetroSystem.N3DS) {
+                        BumperButton(
+                            label = "ZR",
+                            color = skin.bezelColor,
+                            textColor = skin.textColor,
+                            testTag = "button_trigger_zr",
+                            onPressChange = { isPressed ->
+                                inputState.triggerZR = isPressed
+                                if (isPressed) triggerHaptic()
+                            }
+                        )
                     }
-                )
+                    BumperButton(
+                        label = "R",
+                        color = skin.bezelColor,
+                        textColor = skin.textColor,
+                        testTag = "button_trigger_r",
+                        onPressChange = { isPressed ->
+                            inputState.triggerR = isPressed
+                            if (isPressed) triggerHaptic()
+                        }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
