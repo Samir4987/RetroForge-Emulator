@@ -53,6 +53,30 @@ class N3dsInputMapperTest {
         assertTrue(input.buttonR3)
     }
 
+
+    @Test
+    fun hatReleaseDoesNotCancelHeldKeyDpadAndKeyReleaseDoesNotCancelHat() {
+        val input = EmulatorInputState()
+
+        assertTrue(N3dsInputMapper.updateKeyDpad(input, KeyEvent.KEYCODE_DPAD_UP, true))
+        N3dsInputMapper.updateHatDpad(input, hasX = false, x = 0f, hasY = true, y = -1f)
+        N3dsInputMapper.updateHatDpad(input, hasX = false, x = 0f, hasY = true, y = 0f)
+        assertTrue("A neutral hat must not release a key still held", input.dpadUp)
+
+        N3dsInputMapper.updateKeyDpad(input, KeyEvent.KEYCODE_DPAD_UP, false)
+        assertFalse(input.dpadUp)
+
+        N3dsInputMapper.updateHatDpad(input, hasX = true, x = 1f, hasY = false, y = 0f)
+        N3dsInputMapper.updateKeyDpad(input, KeyEvent.KEYCODE_DPAD_RIGHT, true)
+        N3dsInputMapper.updateHatDpad(input, hasX = true, x = 0f, hasY = false, y = 0f)
+        assertTrue("Releasing the hat must preserve the key direction", input.dpadRight)
+
+        input.reset()
+        assertFalse(input.dpadRight)
+        assertFalse(input.keyDpadRight)
+        assertFalse(input.hatDpadRight)
+    }
+
     @Test
     fun normalizesStickAxesWithDeadZoneAndClampsOutOfRangeValues() {
         assertEquals(0f, N3dsInputMapper.normalizeAxis(0.1f, 0.2f), 0.0001f)
