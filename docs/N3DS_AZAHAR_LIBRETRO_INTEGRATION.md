@@ -95,7 +95,7 @@ The separate GitHub Actions workflow **Package Nintendo 3DS core into Android AP
 - [x] Connect N3DS ROM selection, persistent Storage Access Framework permissions, and runtime lifecycle to the emulator screen.
 - [x] Add an app-private importer for user-provided Azahar system/Mii data.
 - [x] Add APK staging for the core, matching C++ runtime, license/revision metadata, and third-party license notices.
-- [x] Produce a successful 3DS-enabled APK and verify the Azahar core, shared C++ runtime, and license/revision assets in CI run #337.
+- [x] Produce a successful 3DS-enabled APK and verify the Azahar core, shared C++ runtime, and license/revision assets in CI run #338.
 - [ ] Install on a physical ARM64 Android device and boot lawful homebrew.
 - [ ] Verify both displays, touch, Circle Pad, buttons, audio, pause/resume, and repeated open/close.
 - [ ] Verify save-state save/restore round trips with the pinned Azahar core.
