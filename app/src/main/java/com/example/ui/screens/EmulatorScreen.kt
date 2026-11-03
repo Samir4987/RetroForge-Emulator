@@ -4,6 +4,9 @@ import android.content.Intent
 import android.widget.Toast
 import android.graphics.Bitmap
 import android.net.Uri
+import android.view.KeyEvent as AndroidKeyEvent
+import android.view.MotionEvent
+import android.view.View
 import android.util.Base64
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableLongStateOf
@@ -26,7 +29,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -64,14 +66,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.nativeKeyEvent
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.pointer.onGenericMotionEvent
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -104,7 +103,6 @@ fun EmulatorScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val gamepadFocusRequester = remember { FocusRequester() }
 
     val isNintendo3ds = game.system.equals("N3DS", ignoreCase = true)
     val n3dsRuntime = remember(game.id, isNintendo3ds) {
@@ -193,10 +191,6 @@ fun EmulatorScreen(
     var showSkinMenu by remember { mutableStateOf(false) }
 
     val saveStates = remember { mutableStateListOf<SaveStateDto>() }
-
-    LaunchedEffect(game.id, isNintendo3ds) {
-        if (isNintendo3ds) gamepadFocusRequester.requestFocus()
-    }
 
     // Intercept back button to return safely to Library
     BackHandler {
@@ -362,24 +356,39 @@ fun EmulatorScreen(
             .fillMaxSize()
             .background(Color(0xFF0A0C14))
             .testTag("emulator_screen")
-            .focusRequester(gamepadFocusRequester)
-            .focusable()
-            .onPreviewKeyEvent { keyEvent ->
-                if (!isNintendo3ds) return@onPreviewKeyEvent false
-                val nativeEvent = keyEvent.nativeKeyEvent
-                if (nativeEvent.action != android.view.KeyEvent.ACTION_DOWN &&
-                    nativeEvent.action != android.view.KeyEvent.ACTION_UP
-                ) return@onPreviewKeyEvent false
-                N3dsInputMapper.applyKeyEvent(
-                    emulatorCore.inputState,
-                    nativeEvent.keyCode,
-                    nativeEvent.action == android.view.KeyEvent.ACTION_DOWN
-                )
-            }
-            .onGenericMotionEvent { motionEvent ->
-                isNintendo3ds && N3dsInputMapper.applyMotionEvent(emulatorCore.inputState, motionEvent)
-            }
     ) {
+        if (isNintendo3ds) {
+            AndroidView(
+                modifier = Modifier.size(1.dp).alpha(0f),
+                factory = { viewContext ->
+                    object : View(viewContext) {
+                        init {
+                            isFocusable = true
+                            isFocusableInTouchMode = true
+                            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                        }
+
+                        override fun onAttachedToWindow() {
+                            super.onAttachedToWindow()
+                            requestFocus()
+                        }
+
+                        override fun onKeyDown(keyCode: Int, event: AndroidKeyEvent): Boolean =
+                            N3dsInputMapper.applyKeyEvent(emulatorCore.inputState, keyCode, true) ||
+                                super.onKeyDown(keyCode, event)
+
+                        override fun onKeyUp(keyCode: Int, event: AndroidKeyEvent): Boolean =
+                            N3dsInputMapper.applyKeyEvent(emulatorCore.inputState, keyCode, false) ||
+                                super.onKeyUp(keyCode, event)
+
+                        override fun onGenericMotionEvent(event: MotionEvent): Boolean =
+                            N3dsInputMapper.applyMotionEvent(emulatorCore.inputState, event) ||
+                                super.onGenericMotionEvent(event)
+                    }
+                }
+            )
+        }
+
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween
