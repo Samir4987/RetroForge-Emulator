@@ -45,6 +45,10 @@ data class EmulatorInputState(
     internal var hatDpadDown = false
     internal var hatDpadLeft = false
     internal var hatDpadRight = false
+    internal var keyTriggerZL = false
+    internal var keyTriggerZR = false
+    internal var axisTriggerZL = false
+    internal var axisTriggerZR = false
 
     fun reset() {
         dpadUp = false
@@ -83,5 +87,9 @@ data class EmulatorInputState(
         hatDpadDown = false
         hatDpadLeft = false
         hatDpadRight = false
+        keyTriggerZL = false
+        keyTriggerZR = false
+        axisTriggerZL = false
+        axisTriggerZR = false
     }
 }
