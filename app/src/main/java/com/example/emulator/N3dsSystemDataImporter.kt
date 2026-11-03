@@ -49,8 +49,17 @@ object N3dsSystemDataImporter {
 
         val staging = File(parent, "${destination.name}.importing")
         val backup = File(parent, "${destination.name}.previous")
+        // Recover the last known-good directory if the app was interrupted
+        // between moving the old destination aside and activating the staging copy.
+        if (!destination.exists() && backup.exists()) {
+            check(backup.renameTo(destination)) {
+                "Could not recover the previous Azahar system-data directory."
+            }
+        }
         staging.deleteRecursively()
-        backup.deleteRecursively()
+        if (backup.exists()) {
+            check(backup.deleteRecursively()) { "Could not clear the previous Azahar import backup." }
+        }
         check(staging.mkdirs()) { "Could not create a temporary import directory." }
 
         val stats = CopyStats()
