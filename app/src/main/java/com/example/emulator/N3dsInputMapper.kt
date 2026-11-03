@@ -37,7 +37,7 @@ object N3dsInputMapper {
     /** Applies a joystick motion event, including Circle Pad, C-stick, hat and triggers. */
     fun applyMotionEvent(input: EmulatorInputState, event: MotionEvent): Boolean {
         if (event.action != MotionEvent.ACTION_MOVE ||
-            event.source and InputDevice.SOURCE_JOYSTICK != InputDevice.SOURCE_JOYSTICK
+            (event.source and InputDevice.SOURCE_JOYSTICK) != InputDevice.SOURCE_JOYSTICK
         ) return false
 
         input.stickX = normalizeAxis(event, MotionEvent.AXIS_X)
