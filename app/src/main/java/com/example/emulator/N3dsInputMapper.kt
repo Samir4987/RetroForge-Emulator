@@ -42,8 +42,20 @@ object N3dsInputMapper {
 
         input.stickX = normalizeAxis(event, MotionEvent.AXIS_X)
         input.stickY = normalizeAxis(event, MotionEvent.AXIS_Y)
-        input.stick2X = normalizeAxis(event, MotionEvent.AXIS_RX)
-        input.stick2Y = normalizeAxis(event, MotionEvent.AXIS_RY)
+        // Android gamepads commonly expose the right stick as Z/RZ; some
+        // joystick devices instead report RX/RY. Support both conventions.
+        val rightStickXAxis = if (hasAxis(event, MotionEvent.AXIS_Z)) {
+            MotionEvent.AXIS_Z
+        } else {
+            MotionEvent.AXIS_RX
+        }
+        val rightStickYAxis = if (hasAxis(event, MotionEvent.AXIS_RZ)) {
+            MotionEvent.AXIS_RZ
+        } else {
+            MotionEvent.AXIS_RY
+        }
+        input.stick2X = normalizeAxis(event, rightStickXAxis)
+        input.stick2Y = normalizeAxis(event, rightStickYAxis)
 
         val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
         val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
