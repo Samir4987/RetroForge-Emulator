@@ -24,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import kotlin.math.roundToInt
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -223,17 +224,47 @@ fun EmulatorScreen(
                     }
                     val safeId = game.id.replace(Regex("[^A-Za-z0-9_-]"), "_")
                     val cachedRom = File(context.cacheDir, "retroforge-$safeId.$extension")
-                    if (game.romBytes != null) {
-                        cachedRom.writeBytes(game.romBytes)
-                    } else {
-                        val uri = game.romUri
-                            ?: throw IllegalStateException("No accessible ROM URI was provided for this Nintendo 3DS game.")
-                        context.contentResolver.openInputStream(Uri.parse(uri)).use { input ->
-                            requireNotNull(input) { "Android could not open the selected ROM." }
-                            cachedRom.outputStream().use { output -> input.copyTo(output) }
+                    val stagingRom = File(context.cacheDir, "${cachedRom.name}.part")
+                    stagingRom.delete()
+                    try {
+                        FileOutputStream(stagingRom).use { output ->
+                            val inMemoryRom = game.romBytes
+                            if (inMemoryRom != null) {
+                                require(inMemoryRom.size.toLong() <= MAX_N3DS_ROM_BYTES) {
+                                    "Nintendo 3DS ROM exceeds the 4 GiB staging limit."
+                                }
+                                output.write(inMemoryRom)
+                            } else {
+                                val uri = game.romUri
+                                    ?: throw IllegalStateException("No accessible ROM URI was provided for this Nintendo 3DS game.")
+                                val input = context.contentResolver.openInputStream(Uri.parse(uri))
+                                    ?: throw IllegalStateException("Android could not open the selected ROM.")
+                                input.use { source ->
+                                    val buffer = ByteArray(1024 * 1024)
+                                    var copiedBytes = 0L
+                                    while (true) {
+                                        val count = source.read(buffer)
+                                        if (count < 0) break
+                                        copiedBytes += count
+                                        require(copiedBytes <= MAX_N3DS_ROM_BYTES) {
+                                            "Nintendo 3DS ROM exceeds the 4 GiB staging limit."
+                                        }
+                                        output.write(buffer, 0, count)
+                                    }
+                                }
+                            }
+                            output.fd.sync()
                         }
+                        require(stagingRom.isFile && stagingRom.length() in 1..MAX_N3DS_ROM_BYTES) {
+                            "The copied ROM is empty or exceeds the 4 GiB staging limit."
+                        }
+                        check(stagingRom.renameTo(cachedRom)) {
+                            "Could not safely activate the staged Nintendo 3DS ROM."
+                        }
+                    } catch (failure: Throwable) {
+                        stagingRom.delete()
+                        throw failure
                     }
-                    require(cachedRom.isFile && cachedRom.length() > 0L) { "The copied ROM is empty." }
                     cachedRom
                 }
                 withContext(Dispatchers.IO) {
@@ -769,6 +800,7 @@ fun EmulatorScreen(
 }
 
 private const val LOCAL_N3DS_STATE_MARKER = "local-n3ds-state"
+private const val MAX_N3DS_ROM_BYTES = 4L * 1024L * 1024L * 1024L
 
 private fun sendNintendo3dsInput(
     runtime: LibretroRuntime,
