@@ -25,8 +25,8 @@ object N3dsInputMapper {
             KeyEvent.KEYCODE_BUTTON_Y -> { input.buttonY = pressed; true }
             KeyEvent.KEYCODE_BUTTON_L1 -> { input.triggerL = pressed; true }
             KeyEvent.KEYCODE_BUTTON_R1 -> { input.triggerR = pressed; true }
-            KeyEvent.KEYCODE_BUTTON_L2 -> { input.triggerZL = pressed; true }
-            KeyEvent.KEYCODE_BUTTON_R2 -> { input.triggerZR = pressed; true }
+            KeyEvent.KEYCODE_BUTTON_L2 -> updateKeyTrigger(input, left = true, pressed = pressed)
+            KeyEvent.KEYCODE_BUTTON_R2 -> updateKeyTrigger(input, left = false, pressed = pressed)
             KeyEvent.KEYCODE_BUTTON_THUMBL -> { input.buttonL3 = pressed; true }
             KeyEvent.KEYCODE_BUTTON_THUMBR -> { input.buttonR3 = pressed; true }
             KeyEvent.KEYCODE_BUTTON_START -> { input.start = pressed; true }
@@ -76,10 +76,10 @@ object N3dsInputMapper {
             event.getAxisValue(MotionEvent.AXIS_GAS)
         )
         if (hasAxis(event, MotionEvent.AXIS_LTRIGGER) || hasAxis(event, MotionEvent.AXIS_BRAKE)) {
-            input.triggerZL = leftTrigger > TRIGGER_THRESHOLD
+            updateAxisTrigger(input, left = true, pressed = leftTrigger > TRIGGER_THRESHOLD)
         }
         if (hasAxis(event, MotionEvent.AXIS_RTRIGGER) || hasAxis(event, MotionEvent.AXIS_GAS)) {
-            input.triggerZR = rightTrigger > TRIGGER_THRESHOLD
+            updateAxisTrigger(input, left = false, pressed = rightTrigger > TRIGGER_THRESHOLD)
         }
         return true
     }
@@ -114,6 +114,23 @@ object N3dsInputMapper {
             input.hatDpadDown = y > 0.5f
         }
         mergeDpadSources(input)
+    }
+
+    /** Keeps digital shoulder buttons and analog trigger axes from cancelling each other. */
+    internal fun updateKeyTrigger(input: EmulatorInputState, left: Boolean, pressed: Boolean): Boolean {
+        if (left) input.keyTriggerZL = pressed else input.keyTriggerZR = pressed
+        mergeTriggerSources(input)
+        return true
+    }
+
+    internal fun updateAxisTrigger(input: EmulatorInputState, left: Boolean, pressed: Boolean) {
+        if (left) input.axisTriggerZL = pressed else input.axisTriggerZR = pressed
+        mergeTriggerSources(input)
+    }
+
+    private fun mergeTriggerSources(input: EmulatorInputState) {
+        input.triggerZL = input.keyTriggerZL || input.axisTriggerZL
+        input.triggerZR = input.keyTriggerZR || input.axisTriggerZR
     }
 
     private fun mergeDpadSources(input: EmulatorInputState) {
