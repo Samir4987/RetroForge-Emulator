@@ -22,7 +22,7 @@ The pin and build approach follow the upstream Libretro Android CI configuration
 - The build verifies ELF64 and AArch64 headers and checks required Libretro dynamic exports.
 - The build writes a SHA-256 manifest, pinned source revision, and upstream GPL license into the CI artifact.
 - The Android app and Azahar core use the pinned NDK version and the shared C++ runtime.
-- The APK staging task verifies the binary hash and source revision, packages the core for ARM64, and includes the GPL license and revision metadata under `assets/licenses/azahar/`.
+- The APK staging task verifies the unstripped core artifact hash and source revision, packages the core for ARM64, and includes the GPL license, revision, and source-artifact SHA-256 metadata under `assets/licenses/azahar/`. Android Gradle strips non-runtime ELF symbols during packaging, so the final APK's `.so` hash differs from the verified source-artifact hash; required Libretro dynamic exports remain present.
 
 ### Android runtime
 
@@ -49,7 +49,7 @@ Implementation does not mean the system is fully supported yet.
 3. **System data and firmware are not bundled.** Azahar requires decrypted ROMs; some games also need Mii data. The in-app folder importer accepts user-owned Azahar data (including `sysdata/`, `nand/`, and `sdmc/`) and places it under `files/retroforge/3ds/saves/Azahar/`. Do not distribute proprietary firmware, keys, NAND dumps, or game content.
 4. **Save-state support is conditional and local-only.** It is exposed only when the core provides `retro_serialize_size`, `retro_serialize`, and `retro_unserialize`. Large snapshots are stored under app-private files and are not cloud-synced; round-trip testing against the pinned core is pending.
 5. **Physical gamepad mapping is implemented but not device-verified.** Android gamepad keys map D-pad, A/B/X/Y, Start/Select, L/R, ZL/ZR, and stick clicks; joystick axes map the Circle Pad and New 3DS C-stick with a dead zone. Hardware-specific axis ranges and controller layouts still need testing on real devices.
-6. **The 3DS-enabled APK packaging gate has passed in CI.** Run [#337](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41643904622) verified the pinned core hash and revision, ran the unit tests, built the APK, and confirmed `azahar_libretro.so`, `libc++_shared.so`, and the GPL license/revision assets are packaged.
+6. **The 3DS-enabled APK packaging gate has passed in CI.** Run [#337](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41643904622) verified the pinned source-core hash and revision, ran the unit tests, built the APK, and confirmed `azahar_libretro.so`, `libc++_shared.so`, and the GPL license/revision assets are packaged. Android's packaging step strips non-runtime ELF symbols, reducing the core from roughly 369 MiB to 37 MiB while retaining its Libretro exports.
 7. **Licensing review remains open.** Azahar declares GPL-3.0. Before distributing the APK, review combined-work obligations and provide required corresponding source and notices. Do not describe the resulting distribution as proprietary or license-free.
 
 Nintendo 3DS must remain labelled **integration in progress** until the packaging, device, compatibility, lifecycle, and legal gates below pass. Other systems retain their existing demo behavior and are not replaced by the 3DS runtime.
