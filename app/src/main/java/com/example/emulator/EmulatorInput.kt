@@ -12,6 +12,11 @@ data class EmulatorInputState(
     var triggerL: Boolean = false,
     var triggerR: Boolean = false,
     var triggerZ: Boolean = false,
+    // Nintendo 3DS New 3DS shoulder triggers and stick clicks.
+    var triggerZL: Boolean = false,
+    var triggerZR: Boolean = false,
+    var buttonL3: Boolean = false,
+    var buttonR3: Boolean = false,
     var start: Boolean = false,
     var select: Boolean = false,
     // N64 C-buttons
@@ -22,6 +27,9 @@ data class EmulatorInputState(
     // Analog joystick (-1.0f to 1.0f)
     var stickX: Float = 0f,
     var stickY: Float = 0f,
+    // New Nintendo 3DS C-stick (right analog stick).
+    var stick2X: Float = 0f,
+    var stick2Y: Float = 0f,
     // NDS Touch Screen
     var touchX: Float = 0f,
     var touchY: Float = 0f,
@@ -39,6 +47,10 @@ data class EmulatorInputState(
         triggerL = false
         triggerR = false
         triggerZ = false
+        triggerZL = false
+        triggerZR = false
+        buttonL3 = false
+        buttonR3 = false
         start = false
         select = false
         cUp = false
@@ -47,6 +59,10 @@ data class EmulatorInputState(
         cRight = false
         stickX = 0f
         stickY = 0f
+        stick2X = 0f
+        stick2Y = 0f
+        touchX = 0f
+        touchY = 0f
         isTouching = false
     }
 }
