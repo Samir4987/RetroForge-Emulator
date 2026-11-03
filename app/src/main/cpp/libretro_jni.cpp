@@ -11,6 +11,7 @@
 #include <fstream>
 #include <limits>
 #include <mutex>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -507,14 +508,23 @@ Java_com_example_emulator_LibretroNative_nativeOpen(
             return env->NewStringUTF("Could not open ROM file.");
         }
         const std::streamoff length = input.tellg();
-        if (length <= 0 || static_cast<unsigned long long>(length) >
+        constexpr std::streamoff kMaxInMemoryRomBytes = 512LL * 1024LL * 1024LL;
+        if (length <= 0 || length > kMaxInMemoryRomBytes ||
+            static_cast<unsigned long long>(length) >
                 static_cast<unsigned long long>(std::numeric_limits<size_t>::max())) {
             close_core();
-            return env->NewStringUTF("ROM file is empty or too large.");
+            return env->NewStringUTF(
+                "ROM is empty or too large for this core's in-memory loading mode (512 MiB limit)."
+            );
         }
-        rom_data.resize(static_cast<size_t>(length));
+        try {
+            rom_data.resize(static_cast<size_t>(length));
+        } catch (const std::bad_alloc&) {
+            close_core();
+            return env->NewStringUTF("Not enough memory to stage this ROM for the Libretro core.");
+        }
         input.seekg(0, std::ios::beg);
-        if (!input.read(reinterpret_cast<char*>(rom_data.data()), length)) {
+        if (!input.read(reinterpret_cast<char*>(rom_data.data()), static_cast<std::streamsize>(length))) {
             close_core();
             return env->NewStringUTF("Could not read complete ROM file.");
         }
