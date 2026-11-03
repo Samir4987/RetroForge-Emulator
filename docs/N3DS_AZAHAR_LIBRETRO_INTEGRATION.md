@@ -49,7 +49,7 @@ Implementation does not mean the system is fully supported yet.
 3. **System data and firmware are not bundled.** Azahar requires decrypted ROMs; some games also need Mii data. The in-app folder importer accepts user-owned Azahar data (including `sysdata/`, `nand/`, and `sdmc/`) and places it under `files/retroforge/3ds/saves/Azahar/`. Do not distribute proprietary firmware, keys, NAND dumps, or game content.
 4. **Save-state support is conditional and local-only.** It is exposed only when the core provides `retro_serialize_size`, `retro_serialize`, and `retro_unserialize`. Large snapshots are stored under app-private files and are not cloud-synced; round-trip testing against the pinned core is pending.
 5. **Physical gamepad mapping is implemented but not device-verified.** Android gamepad keys map D-pad, A/B/X/Y, Start/Select, L/R, ZL/ZR, and stick clicks; joystick axes map the Circle Pad and New 3DS C-stick with a dead zone. Hardware-specific axis ranges and controller layouts still need testing on real devices.
-6. **The current APK packaging workflow still needs a successful end-to-end run.** The branch build workflow downloads the pinned Azahar artifact, verifies its revision and binary hash (or rebuilds it if unavailable), stages the core, runs tests, and verifies the APK contains the core, `libc++_shared.so`, and bundled license/revision assets.
+6. **The 3DS-enabled APK packaging gate has passed in CI.** Run [#337](https://github.com/Samir4987/RetroForge-Emulator/actions/runs/41643904622) verified the pinned core hash and revision, ran the unit tests, built the APK, and confirmed `azahar_libretro.so`, `libc++_shared.so`, and the GPL license/revision assets are packaged.
 7. **Licensing review remains open.** Azahar declares GPL-3.0. Before distributing the APK, review combined-work obligations and provide required corresponding source and notices. Do not describe the resulting distribution as proprietary or license-free.
 
 Nintendo 3DS must remain labelled **integration in progress** until the packaging, device, compatibility, lifecycle, and legal gates below pass. Other systems retain their existing demo behavior and are not replaced by the 3DS runtime.
@@ -95,7 +95,7 @@ The separate GitHub Actions workflow **Package Nintendo 3DS core into Android AP
 - [x] Connect N3DS ROM selection, persistent Storage Access Framework permissions, and runtime lifecycle to the emulator screen.
 - [x] Add an app-private importer for user-provided Azahar system/Mii data.
 - [x] Add APK staging for the core, matching C++ runtime, license/revision metadata, and third-party license notices.
-- [ ] Produce a successful APK from the latest artifact and inspect all packaged native libraries and license assets.
+- [x] Produce a successful 3DS-enabled APK and verify the Azahar core, shared C++ runtime, and license/revision assets in CI run #337.
 - [ ] Install on a physical ARM64 Android device and boot lawful homebrew.
 - [ ] Verify both displays, touch, Circle Pad, buttons, audio, pause/resume, and repeated open/close.
 - [ ] Verify save-state save/restore round trips with the pinned Azahar core.
