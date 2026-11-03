@@ -59,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -122,6 +123,7 @@ fun EmulatorScreen(
     var n3dsBottomBitmap by remember(game.id) { mutableStateOf<Bitmap?>(null) }
     var n3dsError by remember(game.id) { mutableStateOf<String?>(null) }
     var n3dsFrameIntervalMs by remember(game.id) { mutableLongStateOf(16L) }
+    var n3dsFramesPerSecond by remember(game.id) { mutableDoubleStateOf(60.0) }
     var n3dsAudioOutput by remember(game.id) { mutableStateOf<LibretroAudioOutput?>(null) }
     var n3dsLifecyclePaused by remember(game.id) { mutableStateOf(false) }
     var n3dsLayout by remember(game.id) { mutableStateOf(DualScreenLayout.STACKED) }
@@ -240,6 +242,7 @@ fun EmulatorScreen(
                 val avInfo = withContext(Dispatchers.IO) {
                     n3dsRuntime.getAvInfo().getOrThrow()
                 }
+                n3dsFramesPerSecond = avInfo.framesPerSecond
                 n3dsFrameIntervalMs = (1000.0 / avInfo.framesPerSecond)
                     .roundToInt().coerceIn(1, 100).toLong()
                 n3dsAudioOutput = withContext(Dispatchers.IO) {
@@ -290,6 +293,7 @@ fun EmulatorScreen(
                 Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
                     n3dsLifecyclePaused = true
                     n3dsAudioOutput?.pause()
+                    emulatorCore.inputState.reset()
                 }
                 Lifecycle.Event.ON_RESUME -> {
                     n3dsLifecyclePaused = false
@@ -331,7 +335,8 @@ fun EmulatorScreen(
                             n3dsBottomBitmap = bottom
                         }
                         n3dsAudioOutput?.write(output.second)
-                        frameTicker++
+                        emulatorCore.recordExternalFrames(1, n3dsFramesPerSecond)
+                        frameTicker = emulatorCore.frameCounter
                     } catch (failure: Exception) {
                         n3dsError = failure.message ?: "Nintendo 3DS emulation stopped unexpectedly."
                         emulatorCore.isPaused = true
