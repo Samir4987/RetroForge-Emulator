@@ -15,10 +15,10 @@ import kotlin.math.sign
 object N3dsInputMapper {
     fun applyKeyEvent(input: EmulatorInputState, keyCode: Int, pressed: Boolean): Boolean =
         when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP -> { input.dpadUp = pressed; true }
-            KeyEvent.KEYCODE_DPAD_DOWN -> { input.dpadDown = pressed; true }
-            KeyEvent.KEYCODE_DPAD_LEFT -> { input.dpadLeft = pressed; true }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> { input.dpadRight = pressed; true }
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT -> updateKeyDpad(input, keyCode, pressed)
             KeyEvent.KEYCODE_BUTTON_A -> { input.buttonA = pressed; true }
             KeyEvent.KEYCODE_BUTTON_B -> { input.buttonB = pressed; true }
             KeyEvent.KEYCODE_BUTTON_X -> { input.buttonX = pressed; true }
@@ -59,14 +59,13 @@ object N3dsInputMapper {
 
         val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
         val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
-        if (hasAxis(event, MotionEvent.AXIS_HAT_X)) {
-            input.dpadLeft = hatX < -0.5f
-            input.dpadRight = hatX > 0.5f
-        }
-        if (hasAxis(event, MotionEvent.AXIS_HAT_Y)) {
-            input.dpadUp = hatY < -0.5f
-            input.dpadDown = hatY > 0.5f
-        }
+        updateHatDpad(
+            input,
+            hasX = hasAxis(event, MotionEvent.AXIS_HAT_X),
+            x = hatX,
+            hasY = hasAxis(event, MotionEvent.AXIS_HAT_Y),
+            y = hatY
+        )
 
         val leftTrigger = maxOf(
             event.getAxisValue(MotionEvent.AXIS_LTRIGGER),
@@ -83,6 +82,45 @@ object N3dsInputMapper {
             input.triggerZR = rightTrigger > TRIGGER_THRESHOLD
         }
         return true
+    }
+
+    /** Updates the key-driven D-pad source without disturbing joystick-hat directions. */
+    internal fun updateKeyDpad(input: EmulatorInputState, keyCode: Int, pressed: Boolean): Boolean {
+        when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> input.keyDpadUp = pressed
+            KeyEvent.KEYCODE_DPAD_DOWN -> input.keyDpadDown = pressed
+            KeyEvent.KEYCODE_DPAD_LEFT -> input.keyDpadLeft = pressed
+            KeyEvent.KEYCODE_DPAD_RIGHT -> input.keyDpadRight = pressed
+            else -> return false
+        }
+        mergeDpadSources(input)
+        return true
+    }
+
+    /** Updates only axes actually exposed by the device; key D-pad state is preserved. */
+    internal fun updateHatDpad(
+        input: EmulatorInputState,
+        hasX: Boolean,
+        x: Float,
+        hasY: Boolean,
+        y: Float
+    ) {
+        if (hasX) {
+            input.hatDpadLeft = x < -0.5f
+            input.hatDpadRight = x > 0.5f
+        }
+        if (hasY) {
+            input.hatDpadUp = y < -0.5f
+            input.hatDpadDown = y > 0.5f
+        }
+        mergeDpadSources(input)
+    }
+
+    private fun mergeDpadSources(input: EmulatorInputState) {
+        input.dpadUp = input.keyDpadUp || input.hatDpadUp
+        input.dpadDown = input.keyDpadDown || input.hatDpadDown
+        input.dpadLeft = input.keyDpadLeft || input.hatDpadLeft
+        input.dpadRight = input.keyDpadRight || input.hatDpadRight
     }
 
     /** Radial dead-zone remapping for a single normalized Android joystick axis. */
