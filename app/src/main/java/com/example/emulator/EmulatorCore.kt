@@ -34,8 +34,11 @@ class EmulatorCore(
     var isPaused = false
     var isRewinding = false
     var fastForwardMultiplier = 1.0f // 1x, 1.5x, 2x, 4x, 8x
-    var frameCounter = 0L
-    var playTimeSeconds = 0L
+    @Volatile var frameCounter = 0L
+        private set
+    @Volatile var playTimeSeconds = 0L
+        private set
+    private val externalFrameTimeAccumulator = ExternalFrameTimeAccumulator()
 
     // In-game entity simulation state
     private var playerX = 80f
@@ -73,10 +76,20 @@ class EmulatorCore(
     fun loadGame(game: RetroGame) {
         currentGame = game
         currentSystem = RetroSystem.fromCode(game.system)
+        frameCounter = 0L
+        playTimeSeconds = 0L
+        externalFrameTimeAccumulator.reset()
         recreateBuffers()
         resetGameState()
         rewindBuffer.clear()
         audioSynthesizer.playCoin()
+    }
+
+    /** Records frames advanced by a native core instead of the demo simulation. */
+    fun recordExternalFrames(framesAdvanced: Int, framesPerSecond: Double) {
+        if (framesAdvanced <= 0) return
+        frameCounter += framesAdvanced.toLong()
+        playTimeSeconds += externalFrameTimeAccumulator.advance(framesAdvanced, framesPerSecond)
     }
 
     private fun recreateBuffers() {
