@@ -353,8 +353,11 @@ fun EmulatorScreen(
                 if (n3dsRuntime.state == LibretroRuntime.State.GAME_LOADED &&
                     !emulatorCore.isPaused && !n3dsLifecyclePaused) {
                     try {
+                        // Snapshot mutable UI input on the main thread so one native
+                        // frame receives a coherent set of controls.
+                        val inputSnapshot = emulatorCore.inputState.copy()
                         val output = withContext(Dispatchers.Default) {
-                            sendNintendo3dsInput(n3dsRuntime, emulatorCore.inputState)
+                            sendNintendo3dsInput(n3dsRuntime, inputSnapshot)
                             n3dsRuntime.runFrame().getOrThrow()
                             val frame = n3dsRuntime.copyVideoFrame().getOrThrow()
                             val displays = frame?.let(LibretroVideoConverter::splitDualScreenFrame)
