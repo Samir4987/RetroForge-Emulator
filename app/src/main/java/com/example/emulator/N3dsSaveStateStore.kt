@@ -22,16 +22,20 @@ class N3dsSaveStateStore(private val rootDirectory: File) {
             check(directory.mkdirs()) { "Could not create the local 3DS save-state directory." }
         }
         val target = File(directory, "slot-$slot.state")
-        val temporary = File(directory, "slot-$slot.state.tmp")
-        FileOutputStream(temporary).use { output ->
-            output.write(state)
-            output.fd.sync()
+        val temporary = File.createTempFile("slot-$slot-", ".tmp", directory)
+        try {
+            FileOutputStream(temporary).use { output ->
+                output.write(state)
+                output.fd.sync()
+            }
+            check(temporary.renameTo(target)) {
+                "Could not atomically replace the 3DS save state; the previous slot was preserved."
+            }
+            return target
+        } catch (failure: Throwable) {
+            temporary.delete()
+            throw failure
         }
-        if (!temporary.renameTo(target)) {
-            target.delete()
-            check(temporary.renameTo(target)) { "Could not atomically store the 3DS save state." }
-        }
-        return target
     }
 
     @Synchronized
