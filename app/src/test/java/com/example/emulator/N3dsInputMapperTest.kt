@@ -77,6 +77,31 @@ class N3dsInputMapperTest {
         assertFalse(input.hatDpadRight)
     }
 
+
+    @Test
+    fun analogTriggerReleaseDoesNotCancelHeldDigitalTrigger() {
+        val input = EmulatorInputState()
+
+        N3dsInputMapper.updateKeyTrigger(input, left = true, pressed = true)
+        N3dsInputMapper.updateAxisTrigger(input, left = true, pressed = true)
+        N3dsInputMapper.updateAxisTrigger(input, left = true, pressed = false)
+        assertTrue(input.triggerZL)
+
+        N3dsInputMapper.updateKeyTrigger(input, left = true, pressed = false)
+        assertFalse(input.triggerZL)
+
+        N3dsInputMapper.updateAxisTrigger(input, left = false, pressed = true)
+        N3dsInputMapper.updateKeyTrigger(input, left = false, pressed = true)
+        N3dsInputMapper.updateKeyTrigger(input, left = false, pressed = false)
+        assertTrue(input.triggerZR)
+
+        input.reset()
+        assertFalse(input.triggerZL)
+        assertFalse(input.triggerZR)
+        assertFalse(input.keyTriggerZL)
+        assertFalse(input.axisTriggerZR)
+    }
+
     @Test
     fun normalizesStickAxesWithDeadZoneAndClampsOutOfRangeValues() {
         assertEquals(0f, N3dsInputMapper.normalizeAxis(0.1f, 0.2f), 0.0001f)
