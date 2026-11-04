@@ -258,6 +258,7 @@ fun EmulatorScreen(
                     result.onFailure { failure ->
                         ndsLoadError = failure.message ?: "Nintendo DS frame processing failed."
                         emulatorCore.isPaused = true
+                        ndsRuntime?.pauseAudio()
                         Toast.makeText(context, "NDS runtime stopped: ${ndsLoadError}", Toast.LENGTH_LONG).show()
                     }
                     result.getOrNull()?.let { (framesRun, screens) ->
@@ -404,7 +405,11 @@ fun EmulatorScreen(
 
                         // Pause Toggle
                         IconButton(
-                            onClick = { emulatorCore.isPaused = !emulatorCore.isPaused },
+                            onClick = {
+                                emulatorCore.isPaused = !emulatorCore.isPaused
+                                if (emulatorCore.isPaused) ndsRuntime?.pauseAudio()
+                                else ndsRuntime?.resumeAudio()
+                            },
                             modifier = Modifier.testTag("button_pause_toggle")
                         ) {
                             Icon(
@@ -596,6 +601,7 @@ fun EmulatorScreen(
                         } else {
                             val wasPaused = emulatorCore.isPaused
                             emulatorCore.isPaused = true
+                            runtime.pauseAudio()
                             coroutineScope.launch {
                                 val restored = runCatching {
                                     val bytes = withContext(Dispatchers.IO) {
@@ -617,6 +623,7 @@ fun EmulatorScreen(
                                     ).show()
                                 }
                                 emulatorCore.isPaused = wasPaused
+                                if (!wasPaused) runtime.resumeAudio()
                             }
                         }
                     } else {
