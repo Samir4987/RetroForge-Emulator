@@ -4,7 +4,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main, master, backup/main-copy]
   pull_request:
 
 permissions:
@@ -164,13 +164,25 @@ jobs:
             --tests "com.example.emulator.LibretroCoreSpecTest" \
             --tests "com.example.emulator.LibretroVideoFrameTest" \
             --tests "com.example.emulator.LibretroPointerPositionTest" \
-            --tests "com.example.emulator.NdsSaveStateStoreTest"
+            --tests "com.example.emulator.NdsSaveStateStoreTest" \
+            --tests "com.example.emulator.BoundedPcmQueueTest"
 
       - name: Build debug APK
         shell: bash
         run: |
           set -euxo pipefail
           ./gradlew --no-daemon assembleDebug
+
+      - name: Verify NDS core and frontend are packaged
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -l "$APK" | grep -Eq 'lib/arm64-v8a/melondsds_libretro_android\.so'
+          unzip -l "$APK" | grep -Eq 'lib/arm64-v8a/libretroforge_libretro\.so'
+          unzip -l "$APK" | grep -Eq 'assets/licenses/melonds-ds-GPL-3\.0\.txt'
+          unzip -l "$APK" | grep -Eq 'assets/libretro/melondsds_libretro_android\.info'
 
       - name: Verify APK exists
         shell: bash
