@@ -235,9 +235,9 @@ fun EmulatorScreen(
                 val runtime = ndsRuntime
                 if (runtime != null && !emulatorCore.isPaused) {
                     val inputSnapshot = emulatorCore.inputState.copy()
-                    val requestedSteps = emulatorCore.fastForwardMultiplier
-                        .coerceIn(1f, 1000f)
-                        .roundToInt()
+                    val requestedSpeed = emulatorCore.fastForwardMultiplier
+                        .takeIf { it.isFinite() } ?: 1f
+                    val requestedSteps = requestedSpeed.coerceIn(1f, 1000f).roundToInt()
                     val result = runCatching {
                         withContext(Dispatchers.Default) {
                             runtime.updateInput(inputSnapshot).getOrThrow()
