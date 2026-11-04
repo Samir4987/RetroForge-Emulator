@@ -1,0 +1,17 @@
+melonDS DS v1.4.0 — Corresponding Source
+
+The bundled Android arm64 shared library is distributed under GNU GPL version 3 or later (GPLv3+).
+Its corresponding source code, build files, and release history are available at:
+
+https://github.com/JesseTG/melonds-ds/tree/v1.4.0
+
+Release tag: v1.4.0
+Release commit: f394adb
+Android Release archive:
+https://github.com/JesseTG/melonds-ds/releases/download/v1.4.0/melondsds_libretro-android-Release.zip
+
+Published SHA-256 for that archive:
+555568396dd5cf230030e4dd0ff0b0c6ca7118231fe562bc50680fefa7ad8594
+
+The app's build script verifies this checksum before extracting the core.
+The complete GPL-3.0 license text is bundled in melonds-ds-GPL-3.0.txt.

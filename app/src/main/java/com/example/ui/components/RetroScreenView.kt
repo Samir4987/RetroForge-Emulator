@@ -50,11 +50,16 @@ fun RetroScreenView(
     fastForwardMultiplier: Float = 1.0f,
     isPaused: Boolean = false,
     enableScanlines: Boolean = true,
+    frameRevision: Long = 0L,
     onTouchInput: ((x: Float, y: Float, isTouching: Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier
+            .drawWithContent {
+                if (frameRevision < 0L) drawRect(Color.Transparent)
+                drawContent()
+            }
             .testTag("retro_screen_container")
             .clip(RoundedCornerShape(12.dp)),
         color = Color(0xFF0F111A),

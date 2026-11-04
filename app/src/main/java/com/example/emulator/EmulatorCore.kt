@@ -31,7 +31,7 @@ class EmulatorCore(
     val inputState = EmulatorInputState()
     val rewindBuffer = RewindBuffer(capacity = 360)
 
-    var isPaused = false
+    @Volatile var isPaused = false
     var isRewinding = false
     var fastForwardMultiplier = 1.0f // 1x, 1.5x, 2x, 4x, 8x
     var frameCounter = 0L
@@ -68,6 +68,28 @@ class EmulatorCore(
         repeat(6) {
             touchTargets.add(floatArrayOf(40f + it * 32f, 50f + (it % 3) * 30f, 12f, 1f))
         }
+    }
+
+    /**
+     * Copies real Libretro Nintendo DS frames into the existing Android display bitmaps.
+     * The bitmaps are reused between frames to avoid allocating new image buffers every tick.
+     */
+    fun updateNativeNintendoDsFrames(top: LibretroVideoFrame, bottom: LibretroVideoFrame) {
+        require(currentSystem == RetroSystem.NDS) { "Native dual-screen frames require an NDS game." }
+        require(top.width == bottom.width && top.height == bottom.height) {
+            "Nintendo DS top and bottom frame dimensions must match."
+        }
+        if (screenBitmap.width != top.width || screenBitmap.height != top.height) {
+            screenBitmap = Bitmap.createBitmap(top.width, top.height, Bitmap.Config.ARGB_8888)
+        }
+        val bottomBitmap = bottomScreenBitmap
+        if (bottomBitmap == null || bottomBitmap.width != bottom.width || bottomBitmap.height != bottom.height) {
+            bottomScreenBitmap = Bitmap.createBitmap(bottom.width, bottom.height, Bitmap.Config.ARGB_8888)
+        }
+        screenBitmap.setPixels(top.argbPixels, 0, top.width, 0, 0, top.width, top.height)
+        bottomScreenBitmap?.setPixels(
+            bottom.argbPixels, 0, bottom.width, 0, 0, bottom.width, bottom.height
+        )
     }
 
     fun loadGame(game: RetroGame) {
