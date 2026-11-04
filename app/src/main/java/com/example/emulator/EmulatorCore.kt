@@ -150,7 +150,8 @@ class EmulatorCore(
         }
 
         // Fast-forward step execution
-        val steps = max(1, fastForwardMultiplier.toInt())
+        val requestedSpeed = fastForwardMultiplier.takeIf { it.isFinite() } ?: 1f
+        val steps = requestedSpeed.coerceIn(1f, 1000f).toInt()
         for (s in 0 until steps) {
             updateSimulation()
             frameCounter++
